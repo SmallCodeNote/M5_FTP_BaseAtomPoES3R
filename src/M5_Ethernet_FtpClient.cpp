@@ -128,7 +128,7 @@ bool M5_Ethernet_FtpClient::isErrorCode(uint16_t responseCode)
  */
 uint16_t M5_Ethernet_FtpClient::OpenConnection()
 {
-  int responceCode = 200;
+  int responceCode = FTP_RESCODE_ACTION_SUCCESS;
   FTP_LOGINFO1(F("Connecting to: "), serverAdress);
 
 #if ((ESP32) && !FTP_CLIENT_USING_ETHERNET)

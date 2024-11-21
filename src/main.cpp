@@ -37,10 +37,10 @@ bool UnitEnable = true;
 bool EthernetBegin()
 {
   CONFIG_IDF_TARGET_ESP32S3;
-  M5.Log.println(("MAX_SOCK_NUM = " + String(MAX_SOCK_NUM)).c_str());
+  M5_LOGI("MAX_SOCK_NUM = %s", String(MAX_SOCK_NUM));
   if (MAX_SOCK_NUM < 8)
   {
-    M5.Log.println("need overwrite MAX_SOCK_NUM = 8 in M5_Ethernet.h");
+    M5_LOGE("need overwrite MAX_SOCK_NUM = 8 in M5_Ethernet.h");
     UnitEnable = false;
     return false;
   }
@@ -58,7 +58,7 @@ bool TofDeviceBegin()
   tofDevice.setTimeout(500);
   if (!tofDevice.init())
   {
-    M5_LOGI("Failed to detect and initialize sensor!");
+    M5_LOGE("Failed to detect and initialize sensor.");
     while (1)
       ;
   }
@@ -72,12 +72,6 @@ bool TofDeviceBegin()
 String TofDeviceStatusRead()
 {
   String result = String(tofDevice.read());
-  /*
-  M5_LOGI("range: %u", tofDevice.ranging_data.range_mm);
-  M5_LOGI("status: %s", VL53L1X::rangeStatusToString(tofDevice.ranging_data.range_status));
-  M5_LOGI("peak signal: %.2f", tofDevice.ranging_data.peak_signal_count_rate_MCPS);
-  M5_LOGI("ambient: %.2f", tofDevice.ranging_data.ambient_count_rate_MCPS);
-  */
   M5_LOGI("range: %u\tstatus: %s\tpeak signal: %.2f\tambient: %.2f", tofDevice.ranging_data.range_mm, VL53L1X::rangeStatusToString(tofDevice.ranging_data.range_status), tofDevice.ranging_data.peak_signal_count_rate_MCPS, tofDevice.ranging_data.ambient_count_rate_MCPS);
   return result;
 }
@@ -110,9 +104,9 @@ void setup()
   LoadEEPROM();
   updateFTP_Parameter();
 
-  sendMessage(String(storeData.deviceName));
-  sendMessage("Board: " + getBoardName(M5.getBoard()));
-  sendMessage("HOST: " + deviceIP_String);
+  M5.Display.println(String(storeData.deviceName));
+  M5.Display.println("Board: " + getBoardName(M5.getBoard()));
+  M5.Display.println("HOST: " + deviceIP_String);
 
   if (!EthernetBegin())
     return;
@@ -132,17 +126,18 @@ void setup()
 
 void loop()
 {
-
   delay(189);
   HTTP_UI();
-  // NtpClient.getTime(ntpSrvIP_String,+9);
-
+  M5.Display.setTextFont(6);
+  M5.Display.setTextSize(1);
   M5.Display.setCursor(0, 40);
   M5.Display.print(tofDeviceValueString);
 
+  M5.Display.setTextFont(1);
+  M5.Display.setTextSize(1);
   M5.Display.setCursor(0, 111);
-  sendMessage("NTP:" + ntpSrvIP_String);
-  sendMessage(NtpClient.readHour() + ":" + NtpClient.readMinute() + ":" + NtpClient.readSecond());
+  M5.Display.println("NTP:" + ntpSrvIP_String);
+  M5.Display.println(NtpClient.readHour() + ":" + NtpClient.readMinute() + ":" + NtpClient.readSecond());
   Ethernet.maintain();
 }
 
@@ -283,9 +278,11 @@ void ShotLoop(void *arg)
 
   while (1)
   {
-    
+
     tofDeviceValue = tofDevice.read();
-    tofDeviceValueString = String(tofDeviceValue);
+    char tofDeviceValueChars[5];
+    sprintf(tofDeviceValueChars,"%04d",tofDeviceValue);
+    tofDeviceValueString = String(tofDeviceValueChars);
 
     if (storeData.interval >= 1)
     {
