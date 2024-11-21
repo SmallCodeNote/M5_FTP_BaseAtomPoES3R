@@ -1,6 +1,7 @@
 #include <M5Unified.h>
 #include <M5_Ethernet.h>
 #include <time.h>
+#include <TimeLib.h>
 
 #ifndef M5_Ethernet_NtpClient_H
 #define M5_Ethernet_NtpClient_H
@@ -30,6 +31,10 @@ public:
 
     void updateTimeFromServer(String address);
     void updateTimeFromServer(String address, int timezoneOffset);
+    void updateTimeFromString(String timeString);
+    void updateTimeFromString(String timeString, int timezone);
+
+    bool enable();
 
     String readYear();
     String readMonth();
@@ -44,6 +49,8 @@ public:
     String readHour(unsigned long Epoch);
     String readMinute(unsigned long Epoch);
     String readSecond(unsigned long Epoch);
+
+    unsigned long convertTimeStringToEpoch(String timeString);
 };
 
 M5_Ethernet_NtpClient NtpClient;
@@ -82,6 +89,40 @@ void M5_Ethernet_NtpClient::updateTimeFromServer(String address, int timezone)
         return;
     }
     intMillis = millis();
+}
+
+void M5_Ethernet_NtpClient::updateTimeFromString(String address)
+{
+    return updateTimeFromString(address, timezoneOffset);
+}
+
+void M5_Ethernet_NtpClient::updateTimeFromString(String timeString, int timezone)
+{
+    timezoneOffset = timezone;
+
+    unsigned long epoch = convertTimeStringToEpoch(timeString);
+    epoch -= timezoneOffset * 3600;
+
+    lastEpoch = epoch;
+    lastMillis = millis();
+    intMillis = millis();
+    currentEpoch = lastEpoch;
+
+    return;
+}
+
+unsigned long M5_Ethernet_NtpClient::convertTimeStringToEpoch(String timeString)
+{
+    tmElements_t tm;
+    int year, month, day, hour, minute, second;
+    sscanf(timeString.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second);
+    tm.Year = year - 1970;
+    tm.Month = month;
+    tm.Day = day;
+    tm.Hour = hour;
+    tm.Minute = minute;
+    tm.Second = second;
+    return makeTime(tm);
 }
 
 String M5_Ethernet_NtpClient::getTime(String address)
@@ -129,6 +170,11 @@ void M5_Ethernet_NtpClient::sendNTPpacket(const char *address)
     Udp.beginPacket(address, 123); // NTP requests are to port 123
     Udp.write(packetBuffer, NTP_PACKET_SIZE);
     Udp.endPacket();
+}
+
+bool M5_Ethernet_NtpClient::enable()
+{
+    return currentEpoch != 0;
 }
 
 String M5_Ethernet_NtpClient::readYear()

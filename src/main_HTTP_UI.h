@@ -34,7 +34,7 @@ EthernetServer HttpServer(80);
     client.println("</li>");                                                                     \
   }
 
-void HTTP_UI_LoadPost(EthernetClient *client)
+void HTTP_UI_LoadPostParam(EthernetClient *client)
 {
   String currentLine = "";
   // Load post data
@@ -61,7 +61,27 @@ void HTTP_UI_LoadPost(EthernetClient *client)
   ESP.restart();
 }
 
-void HTTP_UI_PrintConfigPage(EthernetClient client)
+void HTTP_UI_LoadPostTime(EthernetClient *client)
+{
+  String currentLine = "";
+  String timeString = "";
+  // Load post data
+  while (client->available())
+  {
+    char c = client->read();
+    if (c == '\n' && currentLine.length() == 0)
+    {
+      break;
+    }
+    currentLine += c;
+  }
+
+  HTTP_GET_PARAM_FROM_POST(timeString);
+
+  NtpClient.updateTimeFromString(timeString);
+}
+
+void HTTP_UI_PrintConfigParamPage(EthernetClient client)
 {
   String currentLine = "";
   client.println("HTTP/1.1 200 OK");
@@ -74,7 +94,7 @@ void HTTP_UI_PrintConfigPage(EthernetClient client)
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<br />");
 
-  client.println("<form action=\"/\" method=\"post\">");
+  client.println("<form action=\"/configParamSuccess.html\" method=\"post\">");
   client.println("<ul>");
 
   HTML_PUT_LI_INPUT(deviceName);
@@ -85,15 +105,70 @@ void HTTP_UI_PrintConfigPage(EthernetClient client)
   HTML_PUT_LI_INPUT(ftp_pass);
   HTML_PUT_LI_INPUT(shotInterval);
 
+  client.println("<li>");
+  client.println("<label for=\"timestamp\">Timestamp</label>");
+  client.println("<input type=\"text\" id=\"timestamp\" name=\"timestamp\" value=\"\" required>");
+  client.println("</li>");
+
   client.println("<li class=\"button\">");
   client.println("<button type=\"submit\">Save</button>");
   client.println("</li>");
 
   client.println("</ul>");
   client.println("</form>");
+
+  client.println("<script>");
+  client.println("function updateTimestamp() {");
+  client.println(" document.getElementById('timestamp').value = new Date().toLocaleString();");
+  client.println("}");
+  client.println("setInterval(updateTimestamp, 1000);");
+  client.println("updateTimestamp();");
+  client.println("</script>");
+
   client.println("</body>");
   client.println("</html>");
 }
+
+void HTTP_UI_PrintConfigTimePage(EthernetClient client)
+{
+  String timeString = "";
+
+  String currentLine = "";
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println("<!DOCTYPE HTML>");
+  client.println("<html>");
+  client.println("<body>");
+  client.println("<h1>" + deviceName + "</h1>");
+  client.println("<br />");
+
+  client.println("<form action=\"/configTimeSuccess.html\" method=\"post\">");
+  client.println("<ul>");
+
+  HTML_PUT_LI_INPUT(timeString);
+
+
+  client.println("<li class=\"button\">");
+  client.println("<button type=\"submit\">Save</button>");
+  client.println("</li>");
+
+  client.println("</ul>");
+  client.println("</form>");
+
+  client.println("<script>");
+  client.println("function updateTimeString() {");
+  client.println(" document.getElementById('timeString').value = new Date().toLocaleString();");
+  client.println("}");
+  client.println("setInterval(updateTimeString, 1000);");
+  client.println("updateTimeString();");
+  client.println("</script>");
+
+  client.println("</body>");
+  client.println("</html>");
+}
+
 // used to image stream
 #define PART_BOUNDARY "123456789000000000000987654321"
 static const char *_STREAM_CONTENT_TYPE =
@@ -110,9 +185,13 @@ void sendPage(EthernetClient client, String page)
   {
     // valuejpegStream(&client, &page);
   }
-  else if (page == "config.html")
+  else if (page == "configParam.html")
   {
-    HTTP_UI_PrintConfigPage(client);
+    HTTP_UI_PrintConfigParamPage(client);
+  }
+  else if (page == "configTime.html")
+  {
+    HTTP_UI_PrintConfigTimePage(client);
   }
   else if (page == "top.html")
   {
@@ -125,7 +204,8 @@ void sendPage(EthernetClient client, String page)
     client.println("<body>");
     client.println("<h1>" + deviceName + "</h1>");
     client.println("<a href=\"/view.html\">View Page</a><br>");
-    client.println("<a href=\"/config.html\">Config Page</a>");
+    client.println("<a href=\"/configParam.html\">Config Parameter Page</a><br>");
+    client.println("<a href=\"/configTime.html\">Config Time Page</a><br>");
     client.println("</body>");
     client.println("</html>");
   }
@@ -158,7 +238,8 @@ void HTTP_UI()
 
     boolean currentLineIsBlank = true;
     String currentLine = "";
-    bool isPost = false;
+    bool isPostConfigParam = false;
+    bool isPostConfigTime = false;
     bool getRequest = false;
     String page = "";
 
@@ -167,12 +248,16 @@ void HTTP_UI()
       if (client.available())
       {
         char c = client.read();
-        M5.Log.printf("%c",c); //Serial.write(c);
+        M5.Log.printf("%c", c); // Serial.write(c);
         if (c == '\n' && currentLineIsBlank)
         {
-          if (isPost)
+          if (isPostConfigParam)
           {
-            HTTP_UI_LoadPost(&client);
+            HTTP_UI_LoadPostParam(&client);
+          }
+          if (isPostConfigTime)
+          {
+            HTTP_UI_LoadPostTime(&client);
           }
 
           if (getRequest)
@@ -208,9 +293,13 @@ void HTTP_UI()
           currentLine += c;
         }
 
-        if (currentLine.startsWith("POST /"))
+        if (currentLine.startsWith("POST /configParam"))
         {
-          isPost = true;
+          isPostConfigParam = true;
+        }
+        if (currentLine.startsWith("POST /configTime"))
+        {
+          isPostConfigTime = true;
         }
         // Check if the current line starts with "GET /view.html"
         if (currentLine.endsWith("GET /view.html"))
@@ -218,10 +307,15 @@ void HTTP_UI()
           getRequest = true;
           page = "view.html";
         }
-        else if (currentLine.endsWith("GET /config.html"))
+        else if (currentLine.endsWith("GET /configParam.html"))
         {
           getRequest = true;
-          page = "config.html";
+          page = "configParam.html";
+        }
+        else if (currentLine.endsWith("GET /configTime.html"))
+        {
+          getRequest = true;
+          page = "configTime.html";
         }
         else if (currentLine.endsWith("GET /top.html") || currentLine.endsWith("GET /"))
         {

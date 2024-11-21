@@ -232,7 +232,6 @@ typedef struct
 
 unsigned long CheckStartOffset()
 {
-
   const int intervals[] = {3600, 600, 300, 10, 5};
   for (int i = 0; i < sizeof(intervals) / sizeof(intervals[0]); i++)
   {
@@ -244,7 +243,7 @@ unsigned long CheckStartOffset()
   return 0;
 }
 
-bool ShotTaskRun(unsigned long currentEpoch)
+bool ShotTaskRunTrigger(unsigned long currentEpoch)
 {
   String ms = NtpClient.readMinute(currentEpoch);
   char mc0 = ms[0];
@@ -273,59 +272,60 @@ void ShotLoop(void *arg)
   unsigned long lastCheckEpoc = 0;
   ShotTaskParams taskParam;
   uint16_t tofDeviceValue = 0;
+  char tofDeviceValueChars[5];
+
+  String directoryName_Past = "";
 
   M5_LOGI("ShotLoop Start  ");
 
-  while (1)
-  {
+  if (Ethernet.linkStatus() == LinkON)
+    ftp.OpenConnection();
 
+  while (true)
+  {
     tofDeviceValue = tofDevice.read();
-    char tofDeviceValueChars[5];
-    sprintf(tofDeviceValueChars,"%04d",tofDeviceValue);
+    sprintf(tofDeviceValueChars, "%04d", tofDeviceValue);
     tofDeviceValueString = String(tofDeviceValueChars);
 
-    if (storeData.interval >= 1)
+    if ((Ethernet.linkStatus() == LinkON) && storeData.interval >= 1)
     {
       unsigned long currentEpoch = NtpClient.currentEpoch;
+      if (currentEpoch < lastWriteEpoc)
+        lastWriteEpoc = 0;
+
       if (currentEpoch - lastCheckEpoc > 1)
-      {
         M5_LOGW("EpocDeltaOver 1:");
-      }
+
       lastCheckEpoc = currentEpoch;
       unsigned long checkStartOffset = CheckStartOffset();
-      bool Flag0 = lastWriteEpoc + storeData.interval <= currentEpoch + checkStartOffset;
 
-      if (Flag0)
+      // if (currentEpoch + checkStartOffset >= lastWriteEpoc + storeData.interval)
+      if (currentEpoch >= lastWriteEpoc + storeData.interval)
       {
-        if (checkStartOffset == 0 || ShotTaskRun(currentEpoch))
+        if (!ftp.isConnected())
+          ftp.OpenConnection();
+        if ((checkStartOffset == 0 || ShotTaskRunTrigger(currentEpoch) ))
         {
           taskParam.currentEpoch = currentEpoch;
           taskParam.tofDeviceValue = tofDeviceValue;
           xTaskCreatePinnedToCore(ShotTask, "ShotTask", 4096, &taskParam, 4, NULL, 1);
 
-          if (currentEpoch < lastWriteEpoc)
-          {
-            lastWriteEpoc = 0;
-          }
-          else
-          {
-            lastWriteEpoc = currentEpoch;
-          }
+          lastWriteEpoc = currentEpoch;
           delay(1000);
           continue;
         }
       }
     }
-    else
-    {
-    }
-
     delay(100);
   }
+
+  if (ftp.isConnected())
+    ftp.CloseConnection();
 
   vTaskDelete(NULL);
 }
 
+String LastWriteDirectoryPath = "";
 void ShotTask(void *param)
 {
   String directoryPath = "/" + deviceName;
@@ -355,11 +355,13 @@ void ShotTask(void *param)
 
   if (true)
   {
-    ftp.OpenConnection();
-    ftp.MakeDirRecursive(directoryPath);
+    // ftp.OpenConnection();
+    if (LastWriteDirectoryPath != directoryPath)
+      ftp.MakeDirRecursive(directoryPath);
     ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
-    ftp.CloseConnection();
+    // ftp.CloseConnection();
   }
 
+  LastWriteDirectoryPath = directoryPath;
   vTaskDelete(NULL);
 }
