@@ -6,6 +6,7 @@
 #define MAIN_HTTP_UI_H
 
 EthernetServer HttpServer(80);
+String tofDeviceValueString = "";
 
 #define HTTP_GET_PARAM_FROM_POST(paramName)                                              \
   {                                                                                      \
@@ -149,7 +150,6 @@ void HTTP_UI_PrintConfigTimePage(EthernetClient client)
 
   HTML_PUT_LI_INPUT(timeString);
 
-
   client.println("<li class=\"button\">");
   client.println("<button type=\"submit\">Save</button>");
   client.println("</li>");
@@ -169,6 +169,51 @@ void HTTP_UI_PrintConfigTimePage(EthernetClient client)
   client.println("</html>");
 }
 
+void HTTP_UI_PrintSensorData(EthernetClient client)
+{
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println("<!DOCTYPE HTML>");
+  client.println("<html>");
+  client.println("<body>");
+  client.println("<h1>M5Stack Sensor Data</h1>");
+  client.println("<br />");
+  client.println("<ul id=\"sensorData\">");
+  client.println("<li>distance: <span id=\"distance\"></span> mm</li>");
+  client.println("</ul>");
+  client.println("<script>");
+  client.println("function fetchData() {");
+  client.println(" var xhr = new XMLHttpRequest();");
+  client.println(" xhr.onreadystatechange = function() {");
+  client.println(" if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println(" var data = JSON.parse(xhr.responseText);");
+  client.println(" document.getElementById('distance').innerText = data.distance;");
+  client.println(" }");
+  client.println(" };");
+  client.println(" xhr.open('GET', '/data', true);");
+  client.println(" xhr.send();");
+  client.println("}");
+  client.println("setInterval(fetchData, 1000);");
+  client.println("fetchData();");
+  client.println("</script>");
+  client.println("</body>");
+  client.println("</html>");
+}
+
+void HTTP_UI_SendSensorData(EthernetClient client)
+{
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  client.print("{");
+  client.print("\"distance\":");
+  client.print(tofDeviceValueString);
+  client.println("}");
+}
+
 // used to image stream
 #define PART_BOUNDARY "123456789000000000000987654321"
 static const char *_STREAM_CONTENT_TYPE =
@@ -183,6 +228,7 @@ void sendPage(EthernetClient client, String page)
 
   if (page == "view.html")
   {
+    HTTP_UI_PrintSensorData(client);
     // valuejpegStream(&client, &page);
   }
   else if (page == "configParam.html")
@@ -192,6 +238,9 @@ void sendPage(EthernetClient client, String page)
   else if (page == "configTime.html")
   {
     HTTP_UI_PrintConfigTimePage(client);
+  }else if (page == "data")
+  {
+    HTTP_UI_SendSensorData(client);
   }
   else if (page == "top.html")
   {
@@ -242,6 +291,7 @@ void HTTP_UI()
     bool isPostConfigTime = false;
     bool getRequest = false;
     String page = "";
+    uint16_t intervalCount = 0;
 
     while (client.connected())
     {
@@ -316,6 +366,10 @@ void HTTP_UI()
         {
           getRequest = true;
           page = "configTime.html";
+        }else if (currentLine.endsWith("GET /data"))
+        {
+          getRequest = true;
+          page = "data";
         }
         else if (currentLine.endsWith("GET /top.html") || currentLine.endsWith("GET /"))
         {
@@ -323,6 +377,13 @@ void HTTP_UI()
           page = "top.html";
         }
       }
+
+      if (intervalCount > 2000)
+      {
+        HTTP_UI_SendSensorData(client);
+        intervalCount = 0;
+      }
+      intervalCount++;
     }
     delay(1);
     client.stop();

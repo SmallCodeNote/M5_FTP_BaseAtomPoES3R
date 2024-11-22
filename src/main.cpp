@@ -7,9 +7,8 @@
 #include "M5_ToF4M.h"
 #include "M5_Ethernet_FtpClient.hpp"
 #include "M5_Ethernet_NtpClient.hpp"
-
-#include "main_EEPROM_handler.h"
 #include "main_HTTP_UI.h"
+#include "main_EEPROM_handler.h"
 #include "M5_GetBoardName.h"
 
 // == M5AtomS3R_Bus ==
@@ -30,7 +29,6 @@ EthernetClient FtpClient(21);
 M5_Ethernet_FtpClient ftp(ftpSrvIP_String, ftp_user, ftp_pass, 60000);
 
 VL53L1X tofDevice;
-String tofDeviceValueString = "";
 
 bool UnitEnable = true;
 
@@ -286,6 +284,7 @@ void ShotLoop(void *arg)
     tofDeviceValue = tofDevice.read();
     sprintf(tofDeviceValueChars, "%04d", tofDeviceValue);
     tofDeviceValueString = String(tofDeviceValueChars);
+    
 
     if ((Ethernet.linkStatus() == LinkON) && storeData.interval >= 1)
     {
@@ -304,7 +303,7 @@ void ShotLoop(void *arg)
       {
         if (!ftp.isConnected())
           ftp.OpenConnection();
-        if ((checkStartOffset == 0 || ShotTaskRunTrigger(currentEpoch) ))
+        if ((checkStartOffset == 0 || ShotTaskRunTrigger(currentEpoch)))
         {
           taskParam.currentEpoch = currentEpoch;
           taskParam.tofDeviceValue = tofDeviceValue;
