@@ -27,7 +27,7 @@ SOFTWARE.
 #include <Arduino.h>
 #include <SPI.h>
 #include <M5_Ethernet.h>
-#include "M5_Ethernet_FtpClient.hpp"
+#include "M5_Ethernet_FtpClient.h"
 
 /* Add Log_Class.hpp
     /// Overload

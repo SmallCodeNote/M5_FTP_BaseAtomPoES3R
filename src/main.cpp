@@ -1,15 +1,20 @@
 #include <M5Unified.h>
 #include <SPI.h>
-#include <Wire.h>
+// #include <Wire.h>
 #include <M5_Ethernet.h>
-#include <time.h>
+// #include <time.h>
 #include <EEPROM.h>
 #include "M5_ToF4M.h"
-#include "M5_Ethernet_FtpClient.hpp"
-#include "M5_Ethernet_NtpClient.hpp"
-#include "main_HTTP_UI.h"
-#include "main_EEPROM_handler.h"
+#include "M5_Ethernet_FtpClient.h"
+#include "M5_Ethernet_NtpClient.h"
 #include "M5_GetBoardName.h"
+
+#include "main.h"
+#include "main_EEPROM_handler.h"
+#include "main_HTTP_UI.h"
+#include "main_Loop.h"
+
+#include "esp_mac.h"
 
 // == M5AtomS3R_Bus ==
 #define SCK 5
@@ -27,10 +32,26 @@ byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 
 EthernetClient FtpClient(21);
 M5_Ethernet_FtpClient ftp(ftpSrvIP_String, ftp_user, ftp_pass, 60000);
+M5_Ethernet_NtpClient NtpClient;
 
 VL53L1X tofDevice;
 
 bool UnitEnable = true;
+
+String getInterfaceMacAddress(esp_mac_type_t interface)
+{
+
+  String macString = "";
+  unsigned char mac_base[6] = {0};
+  if (esp_read_mac(mac_base, interface) == ESP_OK)
+  {
+    char buffer[18]; // 6*2 characters for hex + 5 characters for colons + 1 character for null terminator
+    sprintf(buffer, "%02X:%02X:%02X:%02X:%02X:%02X", mac_base[0], mac_base[1], mac_base[2], mac_base[3], mac_base[4], mac_base[5]);
+    macString = buffer;
+  }
+
+  return macString;
+}
 
 bool EthernetBegin()
 {
@@ -44,7 +65,9 @@ bool EthernetBegin()
   }
   SPI.begin(SCK, MISO, MOSI, -1);
   Ethernet.init(CS);
-  Ethernet.begin(mac, deviceIP);
+
+  esp_read_mac(mac, ESP_MAC_ETH);
+  Ethernet.begin(mac, storeData.deviceIP);
 
   return UnitEnable;
 }
@@ -74,12 +97,7 @@ String TofDeviceStatusRead()
   return result;
 }
 
-void sendMessage(String messageString)
-{
-  M5.Display.println(messageString);
-  // M5_LOGV("%s",messageString);
-}
-void updateFTP_Parameter()
+void updateFTP_ParameterFromGrobalStrings()
 {
   M5_LOGD("ftpSrvIP_String: %s", ftpSrvIP_String);
   ftp.SetServerAddress(ftpSrvIP_String);
@@ -100,11 +118,8 @@ void setup()
 
   EEPROM.begin(STORE_DATA_SIZE);
   LoadEEPROM();
-  updateFTP_Parameter();
 
-  M5.Display.println(String(storeData.deviceName));
-  M5.Display.println("Board: " + getBoardName(M5.getBoard()));
-  M5.Display.println("HOST: " + deviceIP_String);
+  updateFTP_ParameterFromGrobalStrings();
 
   if (!EthernetBegin())
     return;
@@ -112,7 +127,7 @@ void setup()
   if (!TofDeviceBegin())
     return;
 
-  HttpServer.begin();
+  HttpUIServer.begin();
   NtpClient.begin();
   NtpClient.getTime(ntpSrvIP_String, +9);
 
@@ -120,6 +135,10 @@ void setup()
   xTaskCreatePinnedToCore(TimeServerAccessLoop, "TimeServerAccessLoop", 4096, NULL, 6, NULL, 0);
   xTaskCreatePinnedToCore(ButtonKeepCountLoop, "ButtonKeepCountLoop", 4096, NULL, 5, NULL, 1);
   xTaskCreatePinnedToCore(ShotLoop, "ShotLoop", 4096, NULL, 3, NULL, 1);
+
+  M5.Display.println(String(storeData.deviceName));
+  M5.Display.println("Board: " + getBoardName(M5.getBoard()));
+  M5.Display.println("HOST: " + deviceIP_String);
 }
 
 void loop()
@@ -127,240 +146,31 @@ void loop()
   delay(189);
   HTTP_UI();
   M5.Display.setTextFont(6);
-  M5.Display.setTextSize(1);
-  M5.Display.setCursor(0, 40);
-  M5.Display.print(tofDeviceValueString);
+  M5.Display.setCursor(8, 30);
+  M5.Display.println(SensorValueString);
 
   M5.Display.setTextFont(1);
-  M5.Display.setTextSize(1);
-  M5.Display.setCursor(0, 111);
-  M5.Display.println("NTP:" + ntpSrvIP_String);
-  M5.Display.println(NtpClient.readHour() + ":" + NtpClient.readMinute() + ":" + NtpClient.readSecond());
-  Ethernet.maintain();
-}
+  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_STA));
+  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_SOFTAP));
+  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_BT));
+  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_ETH));
 
-void TimeUpdateLoop(void *arg)
-{
-  M5_LOGI("TimeUpdateLoop Start  ");
-  unsigned long lastepoc = 0;
-
-  while (1)
+  String ntpAddressLine = "NTP:" + ntpSrvIP_String;
+  for (u_int8_t i = 0; i < (21 - ntpAddressLine.length()) / 2; i++)
   {
-    delay(200);
-    String timeLine = NtpClient.getTime(ntpSrvIP_String, +9);
-    if (lastepoc > NtpClient.currentEpoch)
-      lastepoc = 0;
-
-    if (lastepoc + 10 <= NtpClient.currentEpoch)
-    {
-      M5.Log.println(("timeLine= " + timeLine).c_str());
-      lastepoc = NtpClient.currentEpoch;
-    }
+    M5.Display.print(" ");
   }
 
-  vTaskDelete(NULL);
-}
+  M5.Display.println(ntpAddressLine);
 
-void TimeServerAccessLoop(void *arg)
-{
-  M5_LOGI("TimeServerAccessLoop Start  ");
-  unsigned long count = 0;
-  while (1)
+  if (NtpClient.enable())
   {
-    delay(10000);
-    if (count > 60)
-    {
-      NtpClient.updateTimeFromServer(ntpSrvIP_String, +9);
-      count = 0;
-    }
-  }
-
-  vTaskDelete(NULL);
-}
-
-void ButtonKeepCountLoop(void *arg)
-{
-  M5_LOGI("ButtonKeepCountLoop Start  ");
-  int PushKeepSubSecCounter = 0;
-
-  while (1)
-  {
-    delay(1000);
-    M5.update();
-
-    if (M5.BtnA.isPressed())
-    {
-      M5_LOGI("BtnA Pressed");
-      PushKeepSubSecCounter++;
-    }
-    else if (M5.BtnA.wasReleased())
-    {
-      M5_LOGI("BtnA Released");
-      PushKeepSubSecCounter = 0;
-    }
-
-    if (PushKeepSubSecCounter > 6)
-      break;
-  }
-
-  bool LED_ON = true;
-  while (1)
-  {
-    delay(1000);
-
-    M5.update();
-    if (M5.BtnA.wasReleased())
-      break;
-
-    LED_ON = !LED_ON;
-  }
-
-  InitEEPROM();
-  delay(1000);
-  ESP.restart();
-
-  vTaskDelete(NULL);
-}
-
-typedef struct
-{
-  unsigned long currentEpoch;
-  uint16_t tofDeviceValue;
-} ShotTaskParams;
-
-unsigned long CheckStartOffset()
-{
-  const int intervals[] = {3600, 600, 300, 10, 5};
-  for (int i = 0; i < sizeof(intervals) / sizeof(intervals[0]); i++)
-  {
-    if (storeData.interval % intervals[i] == 0)
-    {
-      return 1;
-    }
-  }
-  return 0;
-}
-
-bool ShotTaskRunTrigger(unsigned long currentEpoch)
-{
-  String ms = NtpClient.readMinute(currentEpoch);
-  char mc0 = ms[0];
-  char mc1 = ms[1];
-  String ss = NtpClient.readSecond(currentEpoch);
-  char sc0 = ss[0];
-  char sc1 = ss[1];
-
-  if (!(storeData.interval % 3600) && mc0 == '0' && (sc0 == '0' && sc1 == '0'))
-    return true;
-  else if (!(storeData.interval % 600) && (mc1 == '0') && (sc0 == '0' && sc1 == '0'))
-    return true;
-  else if (!(storeData.interval % 300) && (mc1 == '0' || mc1 == '5') && (sc0 == '0' && sc1 == '0'))
-    return true;
-  else if (!(storeData.interval % 10) && sc1 == '0')
-    return true;
-  else if (!(storeData.interval % 5) && (sc1 == '0' || sc1 == '5'))
-    return true;
-
-  return false;
-}
-
-void ShotLoop(void *arg)
-{
-  unsigned long lastWriteEpoc = 0;
-  unsigned long lastCheckEpoc = 0;
-  ShotTaskParams taskParam;
-  uint16_t tofDeviceValue = 0;
-  char tofDeviceValueChars[5];
-
-  String directoryName_Past = "";
-
-  M5_LOGI("ShotLoop Start  ");
-
-  if (Ethernet.linkStatus() == LinkON)
-    ftp.OpenConnection();
-
-  while (true)
-  {
-    tofDeviceValue = tofDevice.read();
-    sprintf(tofDeviceValueChars, "%04d", tofDeviceValue);
-    tofDeviceValueString = String(tofDeviceValueChars);
-    
-
-    if ((Ethernet.linkStatus() == LinkON) && storeData.interval >= 1)
-    {
-      unsigned long currentEpoch = NtpClient.currentEpoch;
-      if (currentEpoch < lastWriteEpoc)
-        lastWriteEpoc = 0;
-
-      if (currentEpoch - lastCheckEpoc > 1)
-        M5_LOGW("EpocDeltaOver 1:");
-
-      lastCheckEpoc = currentEpoch;
-      unsigned long checkStartOffset = CheckStartOffset();
-
-      // if (currentEpoch + checkStartOffset >= lastWriteEpoc + storeData.interval)
-      if (currentEpoch >= lastWriteEpoc + storeData.interval)
-      {
-        if (!ftp.isConnected())
-          ftp.OpenConnection();
-        if ((checkStartOffset == 0 || ShotTaskRunTrigger(currentEpoch)))
-        {
-          taskParam.currentEpoch = currentEpoch;
-          taskParam.tofDeviceValue = tofDeviceValue;
-          xTaskCreatePinnedToCore(ShotTask, "ShotTask", 4096, &taskParam, 4, NULL, 1);
-
-          lastWriteEpoc = currentEpoch;
-          delay(1000);
-          continue;
-        }
-      }
-    }
-    delay(100);
-  }
-
-  if (ftp.isConnected())
-    ftp.CloseConnection();
-
-  vTaskDelete(NULL);
-}
-
-String LastWriteDirectoryPath = "";
-void ShotTask(void *param)
-{
-  String directoryPath = "/" + deviceName;
-
-  ShotTaskParams *taskParam = (ShotTaskParams *)param;
-  unsigned long currentEpoch = taskParam->currentEpoch;
-  uint16_t tofDeviceValue = taskParam->tofDeviceValue;
-
-  String ss = NtpClient.readSecond(currentEpoch);
-  String mm = NtpClient.readMinute(currentEpoch);
-  String HH = NtpClient.readHour(currentEpoch);
-  String DD = NtpClient.readDay(currentEpoch);
-  String MM = NtpClient.readMonth(currentEpoch);
-  String YYYY = NtpClient.readYear(currentEpoch);
-
-  if (storeData.interval < 60)
-  {
-    directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM + "/" + YYYY + MM + DD;
+    M5.Display.println(" " + NtpClient.convertTimeEpochToString() + "   ");
   }
   else
   {
-    directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM + "/" + YYYY + MM + DD;
+    M5.Display.println("time information can not use now.     ");
   }
 
-  String filePath = directoryPath + "/" + YYYY + MM + DD + "_" + HH;
-  String TimeLine = YYYY + "/" + MM + "/" + DD + " " + HH + ":" + mm + ":" + ss;
-
-  if (true)
-  {
-    // ftp.OpenConnection();
-    if (LastWriteDirectoryPath != directoryPath)
-      ftp.MakeDirRecursive(directoryPath);
-    ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
-    // ftp.CloseConnection();
-  }
-
-  LastWriteDirectoryPath = directoryPath;
-  vTaskDelete(NULL);
+  Ethernet.maintain();
 }
