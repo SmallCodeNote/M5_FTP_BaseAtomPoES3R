@@ -1,6 +1,7 @@
 #include <M5Unified.h>
 #include <M5_Ethernet.h>
 #include "M5_Ethernet_NtpClient.h"
+#include "M5_ChartJS.h"
 
 #include "main.h"
 #include "main_HTTP_UI.h"
@@ -111,6 +112,7 @@ void HTTP_UI_PAGE_top(EthernetClient client)
 
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<a href=\"/view.html\">View Page</a><br>");
+  client.println("<a href=\"/chart.html\">Chart Page</a><br>");
   client.println("<a href=\"/configParam.html\">Config Parameter Page</a><br>");
   client.println("<a href=\"/configTime.html\">Config Time Page</a><br>");
 
@@ -181,35 +183,99 @@ void HTTP_UI_PAGE_configTime(EthernetClient client)
 void HTTP_UI_PAGE_view(EthernetClient client)
 {
   HTTP_UI_PART_ResponceHeader(client, "text/html");
+  HTTP_UI_PART_HTMLHeader(client);
 
-  client.print(
-      R"(
-<!DOCTYPE HTML>
-<html>
-<body>
-<h1>Sensor Data</h1>
-<br />
-<ul id="sensorData">
-<li>distance: <span id="distance"></span> mm</li>
-</ul>
-<script>
-function fetchData() {
- var xhr = new XMLHttpRequest();
- xhr.onreadystatechange = function() {
- if (xhr.readyState == 4 && xhr.status == 200) {
- var data = JSON.parse(xhr.responseText);
- document.getElementById('distance').innerText = data.distance;
- }
- };
- xhr.open('GET', '/sensorValueNow.json', true);
- xhr.send();
+  client.println("<h1>M5Stack Sensor Data</h1>");
+  client.println("<br />");
+
+  client.println("<ul id=\"sensorData\">");
+  client.println("<li>Distance: <span id=\"distance\"></span> mm</li>");
+  client.println("</ul>");
+
+  client.println("<script>");
+  client.println("function fetchData() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var data = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('distance').innerText = data.distance;");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.open('GET', '/sensorValueNow.json', true);");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("setInterval(fetchData, 1000);");
+  client.println("fetchData();");
+  client.println("</script>");
+
+  HTTP_UI_PART_HTMLFooter(client);
 }
-setInterval(fetchData, 1000);
-fetchData();
-</script>
-</body>
-</html>
-)");
+
+void HTTP_UI_PAGE_chart(EthernetClient client)
+{
+  HTTP_UI_PART_ResponceHeader(client, "text/html");
+  HTTP_UI_PART_HTMLHeader(client);
+
+  client.println("<h1>M5Stack Distance Data</h1>");
+  client.println("<br />");
+
+  client.println("<ul id=\"sensorData\">");
+  client.println("<li>Distance: <span id=\"distance\"></span> mm</li>");
+  client.println("</ul>");
+
+  client.println("<canvas id=\"distanceChart\" width=\"400\" height=\"200\"></canvas>");
+
+//  client.println("<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>");
+  client.println("<script src=\"/chart.js\"></script>");
+  client.println("<script>");
+  client.println("var distanceData = [];");
+  client.println("var myChart = null;");
+  client.println("function fetchData() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var data = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('distance').innerText = data.distance;");
+  client.println("      distanceData.push(data.distance);");
+  client.println("      if (distanceData.length > 30) { distanceData.shift(); }"); // Keep last 30 seconds of data
+  client.println("      updateChart();");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.open('GET', '/sensorValueNow.json', true);");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("function updateChart() {");
+  client.println("  var ctx = document.getElementById('distanceChart').getContext('2d');");
+
+  client.println("  if (myChart) {");
+  client.println("    myChart.destroy();");
+  client.println("  }");
+
+  client.println("  myChart = new Chart(ctx, {");
+  client.println("    type: 'line',");
+  client.println("    data: {");
+  client.println("      labels: Array.from({length: distanceData.length}, (_, i) => i + 1),");
+  client.println("      datasets: [{");
+  client.println("        label: 'Distance',");
+  client.println("        data: distanceData,");
+  client.println("        borderColor: 'rgba(75, 192, 192, 1)',");
+  client.println("        borderWidth: 1");
+  client.println("      }]");
+  client.println("    },");
+  client.println("    options: {");
+  client.println("      animation: false,");
+  client.println("      scales: {");
+  client.println("        x: { beginAtZero: true },");
+  client.println("        y: { beginAtZero: true }");
+  client.println("      }");
+  client.println("    }");
+  client.println("  });");
+  client.println("}");
+  client.println("setInterval(fetchData, 1000);");
+  client.println("fetchData();");
+  client.println("</script>");
+
+  HTTP_UI_PART_HTMLFooter(client);
 }
 
 void HTTP_UI_JSON_sensorValueNow(EthernetClient client)
@@ -217,7 +283,7 @@ void HTTP_UI_JSON_sensorValueNow(EthernetClient client)
   HTTP_UI_PART_ResponceHeader(client, "application/json");
   client.print("{");
   client.print("\"distance\":");
-  client.print(SensorValueString);
+  client.print(String(SensorValueString.toInt()));
   client.println("}");
 }
 
@@ -229,9 +295,17 @@ void sendPage(EthernetClient client, String page)
   {
     HTTP_UI_JSON_sensorValueNow(client);
   }
+  else if (page == "chart.js")
+  {
+    HTTP_UI_JS_ChartJS(client);
+  }
   else if (page == "view.html")
   {
     HTTP_UI_PAGE_view(client);
+  }
+  else if (page == "chart.html")
+  {
+    HTTP_UI_PAGE_chart(client);
   }
   else if (page == "top.html")
   {
@@ -298,16 +372,25 @@ void HTTP_UI()
           currentLine += c;
         }
 
-        
         if (currentLine.endsWith("GET /sensorValueNow.json"))
         {
           getRequest = true;
           page = "sensorValueNow.json";
         }
+        else if (currentLine.endsWith("GET /chart.js"))
+        {
+          getRequest = true;
+          page = "chart.js";
+        }
         else if (currentLine.endsWith("GET /view.html"))
         {
           getRequest = true;
           page = "view.html";
+        }
+        else if (currentLine.endsWith("GET /chart.html"))
+        {
+          getRequest = true;
+          page = "chart.html";
         }
         else if (currentLine.endsWith("GET /configParam.html"))
         {

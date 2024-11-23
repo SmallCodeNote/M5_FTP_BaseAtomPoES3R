@@ -42,5 +42,8 @@ static const char *_STREAM_PART =
 extern EthernetServer HttpUIServer;
 extern String SensorValueString;
 void HTTP_UI();
+void HTTP_UI_PART_ResponceHeader(EthernetClient client, String Content_Type);
+void HTTP_UI_PART_HTMLFooter(EthernetClient client);
+void HTTP_UI_POST_configParam(EthernetClient client);
 
 #endif
