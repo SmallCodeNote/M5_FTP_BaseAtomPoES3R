@@ -207,16 +207,19 @@ void ShotTask(void *param)
   String MM = NtpClient.readMonth(currentEpoch);
   String YYYY = NtpClient.readYear(currentEpoch);
 
-  if (storeData.ftpSaveInterval < 60)
+  String filePath = directoryPath + "/" + YYYY + MM + DD ;
+
+  if (storeData.ftpSaveInterval > 60)
   {
-    directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM + "/" + YYYY + MM + DD;
+    directoryPath = "/" + deviceName + "/" + YYYY ;
+    filePath = directoryPath + "/" + YYYY + MM ;
   }
   else
   {
-    directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM + "/" + YYYY + MM + DD;
+    directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM ;
+    filePath = directoryPath + "/" + YYYY + MM + DD ;
   }
 
-  String filePath = directoryPath + "/" + YYYY + MM + DD + "_" + HH;
   String TimeLine = YYYY + "/" + MM + "/" + DD + " " + HH + ":" + mm + ":" + ss;
 
   if (true)
