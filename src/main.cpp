@@ -129,7 +129,7 @@ void setup()
 
   HttpUIServer.begin();
   NtpClient.begin();
-  NtpClient.getTime(ntpSrvIP_String, +9);
+  NtpClient.getTime(ntpSrvIP_String, (int)(storeData.timeZoneOffset));
 
   xTaskCreatePinnedToCore(TimeUpdateLoop, "TimeUpdateLoop", 4096, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(TimeServerAccessLoop, "TimeServerAccessLoop", 4096, NULL, 6, NULL, 0);

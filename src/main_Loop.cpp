@@ -101,7 +101,7 @@ unsigned long ShotStartOffset()
   const int intervals[] = {3600, 600, 300, 10, 5};
   for (int i = 0; i < sizeof(intervals) / sizeof(intervals[0]); i++)
   {
-    if (storeData.interval % intervals[i] == 0)
+    if (storeData.ftpSaveInterval % intervals[i] == 0)
     {
       return 1;
     }
@@ -118,15 +118,15 @@ bool ShotTaskRunTrigger(unsigned long currentEpoch)
   char sc0 = ss[0];
   char sc1 = ss[1];
 
-  if (!(storeData.interval % 3600) && mc0 == '0' && (sc0 == '0' && sc1 == '0'))
+  if (!(storeData.ftpSaveInterval % 3600) && mc0 == '0' && (sc0 == '0' && sc1 == '0'))
     return true;
-  else if (!(storeData.interval % 600) && (mc1 == '0') && (sc0 == '0' && sc1 == '0'))
+  else if (!(storeData.ftpSaveInterval % 600) && (mc1 == '0') && (sc0 == '0' && sc1 == '0'))
     return true;
-  else if (!(storeData.interval % 300) && (mc1 == '0' || mc1 == '5') && (sc0 == '0' && sc1 == '0'))
+  else if (!(storeData.ftpSaveInterval % 300) && (mc1 == '0' || mc1 == '5') && (sc0 == '0' && sc1 == '0'))
     return true;
-  else if (!(storeData.interval % 10) && sc1 == '0')
+  else if (!(storeData.ftpSaveInterval % 10) && sc1 == '0')
     return true;
-  else if (!(storeData.interval % 5) && (sc1 == '0' || sc1 == '5'))
+  else if (!(storeData.ftpSaveInterval % 5) && (sc1 == '0' || sc1 == '5'))
     return true;
 
   return false;
@@ -153,7 +153,7 @@ void ShotLoop(void *arg)
     sprintf(tofDeviceValueChars, "%04d", tofDeviceValue);
     SensorValueString = String(tofDeviceValueChars);
     
-    if ((Ethernet.linkStatus() == LinkON) && storeData.interval >= 1)
+    if ((Ethernet.linkStatus() == LinkON) && storeData.ftpSaveInterval >= 1)
     {
       unsigned long currentEpoch = NtpClient.currentEpoch;
       if (currentEpoch < lastWriteEpoc)
@@ -165,8 +165,8 @@ void ShotLoop(void *arg)
       lastCheckEpoc = currentEpoch;
       unsigned long shotStartOffset = ShotStartOffset();
 
-      // if (currentEpoch + checkStartOffset >= lastWriteEpoc + storeData.interval)
-      if (currentEpoch >= lastWriteEpoc + storeData.interval)
+      // if (currentEpoch + checkStartOffset >= lastWriteEpoc + storeData.ftpSaveInterval)
+      if (currentEpoch >= lastWriteEpoc + storeData.ftpSaveInterval)
       {
         if (!ftp.isConnected())
           ftp.OpenConnection();
@@ -207,7 +207,7 @@ void ShotTask(void *param)
   String MM = NtpClient.readMonth(currentEpoch);
   String YYYY = NtpClient.readYear(currentEpoch);
 
-  if (storeData.interval < 60)
+  if (storeData.ftpSaveInterval < 60)
   {
     directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM + "/" + YYYY + MM + DD;
   }

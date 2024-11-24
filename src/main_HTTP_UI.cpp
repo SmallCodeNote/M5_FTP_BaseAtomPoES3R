@@ -1,10 +1,10 @@
 #include <M5Unified.h>
 #include <M5_Ethernet.h>
 #include "M5_Ethernet_NtpClient.h"
-#include "M5_ChartJS.h"
 
 #include "main.h"
 #include "main_HTTP_UI.h"
+#include "main_HTTP_UI_ChartJS.h"
 #include "main_EEPROM_handler.h"
 
 EthernetServer HttpUIServer(80);
@@ -31,90 +31,108 @@ void HTTP_UI_PART_HTMLFooter(EthernetClient client)
   client.println("</html>");
 }
 
-void HTTP_UI_POST_configParam(EthernetClient client)
+void HTTP_UI_JSON_sensorValueNow(EthernetClient client)
 {
-  String currentLine = "";
-  // Load post data
-  while (client.available())
-  {
-    char c = client.read();
-    if (c == '\n' && currentLine.length() == 0)
-    {
-      break;
-    }
-    currentLine += c;
-  }
+  HTTP_UI_PART_ResponceHeader(client, "application/json");
+  client.print("{");
+  client.print("\"distance\":");
+  client.print(String(SensorValueString.toInt()));
+  client.println("}");
+}
 
-  HTTP_GET_PARAM_FROM_POST(deviceName);
-  HTTP_GET_PARAM_FROM_POST(deviceIP_String);
-  HTTP_GET_PARAM_FROM_POST(ntpSrvIP_String);
-  HTTP_GET_PARAM_FROM_POST(ftpSrvIP_String);
-  HTTP_GET_PARAM_FROM_POST(ftp_user);
-  HTTP_GET_PARAM_FROM_POST(ftp_pass);
-  HTTP_GET_PARAM_FROM_POST(shotInterval);
-
-  PutEEPROM();
-
+void HTTP_UI_PAGE_view(EthernetClient client)
+{
   HTTP_UI_PART_ResponceHeader(client, "text/html");
   HTTP_UI_PART_HTMLHeader(client);
+
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<br />");
-  client.println("SUCCESS PARAMETER UPDATE.");
-  HTTP_UI_PART_HTMLFooter(client);
 
-  delay(1000);
-  ESP.restart();
+  client.println("<ul id=\"sensorData\">");
+  client.println("<li>Distance: <span id=\"distance\"></span> mm</li>");
+  client.println("</ul>");
+
+  client.println("<script>");
+  client.println("function fetchData() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var data = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('distance').innerText = data.distance;");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.open('GET', '/sensorValueNow.json', true);");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("setInterval(fetchData, 1000);");
+  client.println("fetchData();");
+  client.println("</script>");
+
+  HTTP_UI_PART_HTMLFooter(client);
 }
 
-void HTTP_UI_POST_configTime(EthernetClient client)
+void HTTP_UI_PAGE_chart(EthernetClient client)
 {
-  String currentLine = "";
-  String timeString = "";
-  // Load post data
-  while (client.available())
-  {
-    char c = client.read();
-    if (c == '\n' && currentLine.length() == 0)
-    {
-      break;
-    }
-    currentLine += c;
-  }
-  HTTP_GET_PARAM_FROM_POST(timeString);
-  NtpClient.updateTimeFromString(timeString);
-
   HTTP_UI_PART_ResponceHeader(client, "text/html");
   HTTP_UI_PART_HTMLHeader(client);
+
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<br />");
-  client.println("SUCCESS TIME UPDATE.");
-  HTTP_UI_PART_HTMLFooter(client);
-}
 
-void HTTP_UI_PAGE_notFound(EthernetClient client)
-{
-  client.println("HTTP/1.1 404 Not Found");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println();
+  client.println("<ul id=\"sensorData\">");
+  client.println("<li>Distance: <span id=\"distance\"></span> mm</li>");
+  client.println("</ul>");
 
-  HTTP_UI_PART_HTMLHeader(client);
+  client.println("<canvas id=\"distanceChart\" width=\"400\" height=\"200\"></canvas>");
 
-  client.println("<h1>404 Not Found</h1>");
+  client.println("<script src=\"/chart.js\"></script>");
+  client.println("<script>");
+  client.printf("var distanceData = Array(%s).fill(0);\n", chartShowPointCount.c_str());
+  client.println("var myChart = null;");
+  client.println("function fetchData() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var data = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('distance').innerText = data.distance;");
+  client.println("      distanceData.push(data.distance);");
+  client.printf("      if (distanceData.length > %s) { distanceData.shift(); }", chartShowPointCount.c_str());
+  client.println("      updateChart();");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.open('GET', '/sensorValueNow.json', true);");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("function updateChart() {");
+  client.println("  var ctx = document.getElementById('distanceChart').getContext('2d');");
 
-  HTTP_UI_PART_HTMLFooter(client);
-}
+  client.println("  if (myChart) {");
+  client.println("    myChart.destroy();");
+  client.println("  }");
 
-void HTTP_UI_PAGE_top(EthernetClient client)
-{
-  HTTP_UI_PART_ResponceHeader(client, "text/html");
-  HTTP_UI_PART_HTMLHeader(client);
-
-  client.println("<h1>" + deviceName + "</h1>");
-  client.println("<a href=\"/view.html\">View Page</a><br>");
-  client.println("<a href=\"/chart.html\">Chart Page</a><br>");
-  client.println("<a href=\"/configParam.html\">Config Parameter Page</a><br>");
-  client.println("<a href=\"/configTime.html\">Config Time Page</a><br>");
+  client.println("  myChart = new Chart(ctx, {");
+  client.println("    type: 'line',");
+  client.println("    data: {");
+  client.println("      labels: Array.from({length: distanceData.length}, (_, i) => i + 1),");
+  client.println("      datasets: [{");
+  client.println("        label: 'Distance',");
+  client.println("        data: distanceData,");
+  client.println("        borderColor: 'rgba(75, 192, 192, 1)',");
+  client.println("        borderWidth: 1");
+  client.println("      }]");
+  client.println("    },");
+  client.println("    options: {");
+  client.println("      animation: false,");
+  client.println("      scales: {");
+  client.println("        x: { beginAtZero: true },");
+  client.println("        y: { beginAtZero: true }");
+  client.println("      }");
+  client.println("    }");
+  client.println("  });");
+  client.println("}");
+  client.printf("setInterval(fetchData, %s);", chartUpdateInterval.c_str());
+  client.println("fetchData();");
+  client.println("</script>");
 
   HTTP_UI_PART_HTMLFooter(client);
 }
@@ -137,7 +155,10 @@ void HTTP_UI_PAGE_configParam(EthernetClient client)
   HTML_PUT_LI_INPUT(ftpSrvIP_String);
   HTML_PUT_LI_INPUT(ftp_user);
   HTML_PUT_LI_INPUT(ftp_pass);
-  HTML_PUT_LI_INPUT(shotInterval);
+  HTML_PUT_LI_INPUT(ftpSaveInterval);
+  HTML_PUT_LI_INPUT(chartShowPointCount);
+  HTML_PUT_LI_INPUT(chartUpdateInterval);
+  HTML_PUT_LI_INPUT(timeZoneOffset);
 
   client.println("<li class=\"button\">");
   client.println("<button type=\"submit\">Save</button>");
@@ -146,6 +167,44 @@ void HTTP_UI_PAGE_configParam(EthernetClient client)
   client.println("</form>");
 
   HTTP_UI_PART_HTMLFooter(client);
+}
+
+void HTTP_UI_POST_configParam(EthernetClient client)
+{
+  String currentLine = "";
+  // Load post data
+  while (client.available())
+  {
+    char c = client.read();
+    if (c == '\n' && currentLine.length() == 0)
+    {
+      break;
+    }
+    currentLine += c;
+  }
+
+  HTTP_GET_PARAM_FROM_POST(deviceName);
+  HTTP_GET_PARAM_FROM_POST(deviceIP_String);
+  HTTP_GET_PARAM_FROM_POST(ntpSrvIP_String);
+  HTTP_GET_PARAM_FROM_POST(ftpSrvIP_String);
+  HTTP_GET_PARAM_FROM_POST(ftp_user);
+  HTTP_GET_PARAM_FROM_POST(ftp_pass);
+  HTTP_GET_PARAM_FROM_POST(ftpSaveInterval);
+  HTTP_GET_PARAM_FROM_POST(chartShowPointCount);
+  HTTP_GET_PARAM_FROM_POST(chartUpdateInterval);
+  HTTP_GET_PARAM_FROM_POST(timeZoneOffset);
+
+  PutEEPROM();
+
+  HTTP_UI_PART_ResponceHeader(client, "text/html");
+  HTTP_UI_PART_HTMLHeader(client);
+  client.println("<h1>" + deviceName + "</h1>");
+  client.println("<br />");
+  client.println("SUCCESS PARAMETER UPDATE.");
+  HTTP_UI_PART_HTMLFooter(client);
+
+  delay(1000);
+  ESP.restart();
 }
 
 void HTTP_UI_PAGE_configTime(EthernetClient client)
@@ -180,144 +239,122 @@ void HTTP_UI_PAGE_configTime(EthernetClient client)
   HTTP_UI_PART_HTMLFooter(client);
 }
 
-void HTTP_UI_PAGE_view(EthernetClient client)
+String urlDecode(String input) {
+  String decoded = "";
+  char temp[] = "0x00";
+  unsigned int i, j;
+  for (i = 0; i < input.length(); i++) {
+    if (input[i] == '%') {
+      temp[2] = input[i + 1];
+      temp[3] = input[i + 2];
+      decoded += (char)strtol(temp, NULL, 16);
+      i += 2;
+    } else if (input[i] == '+') {
+      decoded += ' ';
+    } else {
+      decoded += input[i];
+    }
+  }
+  return decoded;
+}
+void HTTP_UI_POST_configTime(EthernetClient client)
+{
+  String currentLine = "";
+  String timeString = "";
+  // Load post data
+  while (client.available())
+  {
+    char c = client.read();
+    if (c == '\n' && currentLine.length() == 0)
+    {
+      break;
+    }
+    currentLine += c;
+  }
+  HTTP_GET_PARAM_FROM_POST(timeString);
+
+  timeString = urlDecode(timeString);
+  M5_LOGI("posted timeString = %s",timeString.c_str());
+  NtpClient.updateTimeFromString(timeString);
+
+  HTTP_UI_PART_ResponceHeader(client, "text/html");
+  HTTP_UI_PART_HTMLHeader(client);
+  client.println("<h1>" + deviceName + "</h1>");
+  client.println("<br />");
+  client.println("SUCCESS TIME UPDATE.");
+  HTTP_UI_PART_HTMLFooter(client);
+}
+
+
+void HTTP_UI_PAGE_top(EthernetClient client)
 {
   HTTP_UI_PART_ResponceHeader(client, "text/html");
   HTTP_UI_PART_HTMLHeader(client);
 
-  client.println("<h1>M5Stack Sensor Data</h1>");
-  client.println("<br />");
-
-  client.println("<ul id=\"sensorData\">");
-  client.println("<li>Distance: <span id=\"distance\"></span> mm</li>");
-  client.println("</ul>");
-
-  client.println("<script>");
-  client.println("function fetchData() {");
-  client.println("  var xhr = new XMLHttpRequest();");
-  client.println("  xhr.onreadystatechange = function() {");
-  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
-  client.println("      var data = JSON.parse(xhr.responseText);");
-  client.println("      document.getElementById('distance').innerText = data.distance;");
-  client.println("    }");
-  client.println("  };");
-  client.println("  xhr.open('GET', '/sensorValueNow.json', true);");
-  client.println("  xhr.send();");
-  client.println("}");
-  client.println("setInterval(fetchData, 1000);");
-  client.println("fetchData();");
-  client.println("</script>");
+  client.println("<h1>" + deviceName + "</h1>");
+  client.println("<a href=\"/view.html\">View Page</a><br>");
+  client.println("<a href=\"/chart.html\">Chart Page</a><br>");
+  client.println("<a href=\"/configParam.html\">Config Parameter Page</a><br>");
+  client.println("<a href=\"/configTime.html\">Config Time Page</a><br>");
 
   HTTP_UI_PART_HTMLFooter(client);
 }
 
-void HTTP_UI_PAGE_chart(EthernetClient client)
+
+void HTTP_UI_PAGE_notFound(EthernetClient client)
 {
-  HTTP_UI_PART_ResponceHeader(client, "text/html");
+  client.println("HTTP/1.1 404 Not Found");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+
   HTTP_UI_PART_HTMLHeader(client);
 
-  client.println("<h1>M5Stack Distance Data</h1>");
-  client.println("<br />");
-
-  client.println("<ul id=\"sensorData\">");
-  client.println("<li>Distance: <span id=\"distance\"></span> mm</li>");
-  client.println("</ul>");
-
-  client.println("<canvas id=\"distanceChart\" width=\"400\" height=\"200\"></canvas>");
-
-//  client.println("<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>");
-  client.println("<script src=\"/chart.js\"></script>");
-  client.println("<script>");
-  client.println("var distanceData = [];");
-  client.println("var myChart = null;");
-  client.println("function fetchData() {");
-  client.println("  var xhr = new XMLHttpRequest();");
-  client.println("  xhr.onreadystatechange = function() {");
-  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
-  client.println("      var data = JSON.parse(xhr.responseText);");
-  client.println("      document.getElementById('distance').innerText = data.distance;");
-  client.println("      distanceData.push(data.distance);");
-  client.println("      if (distanceData.length > 30) { distanceData.shift(); }"); // Keep last 30 seconds of data
-  client.println("      updateChart();");
-  client.println("    }");
-  client.println("  };");
-  client.println("  xhr.open('GET', '/sensorValueNow.json', true);");
-  client.println("  xhr.send();");
-  client.println("}");
-  client.println("function updateChart() {");
-  client.println("  var ctx = document.getElementById('distanceChart').getContext('2d');");
-
-  client.println("  if (myChart) {");
-  client.println("    myChart.destroy();");
-  client.println("  }");
-
-  client.println("  myChart = new Chart(ctx, {");
-  client.println("    type: 'line',");
-  client.println("    data: {");
-  client.println("      labels: Array.from({length: distanceData.length}, (_, i) => i + 1),");
-  client.println("      datasets: [{");
-  client.println("        label: 'Distance',");
-  client.println("        data: distanceData,");
-  client.println("        borderColor: 'rgba(75, 192, 192, 1)',");
-  client.println("        borderWidth: 1");
-  client.println("      }]");
-  client.println("    },");
-  client.println("    options: {");
-  client.println("      animation: false,");
-  client.println("      scales: {");
-  client.println("        x: { beginAtZero: true },");
-  client.println("        y: { beginAtZero: true }");
-  client.println("      }");
-  client.println("    }");
-  client.println("  });");
-  client.println("}");
-  client.println("setInterval(fetchData, 1000);");
-  client.println("fetchData();");
-  client.println("</script>");
+  client.println("<h1>404 Not Found</h1>");
 
   HTTP_UI_PART_HTMLFooter(client);
 }
 
-void HTTP_UI_JSON_sensorValueNow(EthernetClient client)
-{
-  HTTP_UI_PART_ResponceHeader(client, "application/json");
-  client.print("{");
-  client.print("\"distance\":");
-  client.print(String(SensorValueString.toInt()));
-  client.println("}");
-}
 
 void sendPage(EthernetClient client, String page)
 {
-  M5_LOGV("page = %s", page);
+  M5_LOGV("page = %s", page.c_str());
 
   if (page == "sensorValueNow.json")
   {
     HTTP_UI_JSON_sensorValueNow(client);
   }
-  else if (page == "chart.js")
-  {
-    HTTP_UI_JS_ChartJS(client);
-  }
   else if (page == "view.html")
   {
     HTTP_UI_PAGE_view(client);
+  }
+  else if (page == "chart.js")
+  {
+    HTTP_UI_JS_ChartJS(client);
   }
   else if (page == "chart.html")
   {
     HTTP_UI_PAGE_chart(client);
   }
-  else if (page == "top.html")
-  {
-    HTTP_UI_PAGE_top(client);
-  }
   else if (page == "configParam.html")
   {
     HTTP_UI_PAGE_configParam(client);
   }
+  else if (page == "configParamSuccess.html")
+  {
+    HTTP_UI_POST_configParam(client);
+  }
   else if (page == "configTime.html")
   {
     HTTP_UI_PAGE_configTime(client);
+  }
+  else if (page == "configTimeSuccess.html")
+  {
+    HTTP_UI_POST_configTime(client);
+  }
+  else if (page == "top.html")
+  {
+    HTTP_UI_PAGE_top(client);
   }
   else
   {

@@ -5,9 +5,9 @@
 #ifndef MAIN_EEPROM_HANDLER_H
 #define MAIN_EEPROM_HANDLER_H
 
-#define STORE_DATA_SIZE 128                // byte
+#define STORE_DATA_SIZE 256                // byte
 #define STORE_DATA_DEVICENAME_MAXLENGTH 31 // byte
-#define EEPROM_CHECK_CODE 0x44
+#define EEPROM_CHECK_CODE 0x46
 
 /// @brief Encorder Profile Struct
 struct DATA_SET
@@ -19,7 +19,10 @@ struct DATA_SET
     IPAddress ftpSrvIP;
     IPAddress ntpSrvIP;
 
-    u_int16_t interval;
+    u_int16_t ftpSaveInterval;
+    u_int16_t chartUpdateInterval;
+    u_int16_t chartShowPointCount;
+    int8_t timeZoneOffset;
 
     /// @brief deviceName
     char deviceName[STORE_DATA_DEVICENAME_MAXLENGTH + 1];
@@ -32,7 +35,10 @@ extern String ftp_pass ;
 
 /// @brief Encorder Profile
 extern DATA_SET storeData;
-extern String shotInterval;
+extern String ftpSaveInterval;
+extern String chartUpdateInterval;
+extern String chartShowPointCount;
+extern String timeZoneOffset;
 
 extern String deviceName ;
 extern String deviceIP_String ;

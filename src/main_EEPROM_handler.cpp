@@ -5,7 +5,11 @@
 
 /// @brief UnitProfile
 DATA_SET storeData;
-String shotInterval = "0";
+String ftpSaveInterval = "0";
+String chartShowPointCount = "60";
+String chartUpdateInterval = "1000";
+
+String timeZoneOffset = "9";
 
 String ftp_user = "ftpusr";
 String ftp_pass = "ftpword";
@@ -23,7 +27,11 @@ void InitEEPROM()
     ntpSrvIP_String = "192.168.25.74";
     ftp_user = "ftpusr";
     ftp_pass = "ftpword";
-    shotInterval = "0";
+    ftpSaveInterval = "0";
+    chartShowPointCount = "60";
+    chartUpdateInterval = "1000";
+
+    timeZoneOffset = "9";
 
     SetStoreDataFromStrings();
     storeData.romCheckCode = EEPROM_CHECK_CODE;
@@ -52,7 +60,10 @@ void PutEEPROM()
 {
     M5_LOGI("PutEEPROM: romCheckCode = %x", (storeData.romCheckCode));
     M5_LOGI("PutEEPROM: deviceName = %s, %s", deviceName.c_str(), (storeData.deviceName));
-    M5_LOGI("PutEEPROM: interval = %s, %u", shotInterval.c_str(), (storeData.interval));
+    M5_LOGI("PutEEPROM: ftpSaveInterval = %s, %u", ftpSaveInterval.c_str(), (storeData.ftpSaveInterval));
+    M5_LOGI("PutEEPROM: chartUpdateInterval = %s, %u", chartUpdateInterval.c_str(), (storeData.chartUpdateInterval));
+    M5_LOGI("PutEEPROM: chartShowPointCount = %s, %u", chartShowPointCount.c_str(), (storeData.chartShowPointCount));
+    M5_LOGI("PutEEPROM: timeZoneOffset = %s, %d", timeZoneOffset.c_str(), (storeData.timeZoneOffset));
 
     SetStoreDataFromStrings();
     storeData.romCheckCode = EEPROM_CHECK_CODE;
@@ -69,7 +80,10 @@ void SetStringsFromStoreData()
     ntpSrvIP_String = storeData.ntpSrvIP.toString();
     ftp_user = storeData.ftp_user;
     ftp_pass = storeData.ftp_pass;
-    shotInterval = String(storeData.interval);
+    ftpSaveInterval = String(storeData.ftpSaveInterval);
+    chartUpdateInterval = String(storeData.chartUpdateInterval);
+    chartShowPointCount = String(storeData.chartShowPointCount);
+    timeZoneOffset = String(storeData.timeZoneOffset);
 }
 
 void SetStoreDataFromStrings()
@@ -87,5 +101,9 @@ void SetStoreDataFromStrings()
     storeData.ftpSrvIP.fromString(ftpSrvIP_String);
     strcpy(storeData.ftp_user, ftp_user.c_str());
     strcpy(storeData.ftp_pass, ftp_pass.c_str());
-    storeData.interval = (u_int16_t)(shotInterval.toInt());
+    storeData.ftpSaveInterval = (u_int16_t)(ftpSaveInterval.toInt());
+    storeData.chartUpdateInterval = (u_int16_t)(chartUpdateInterval.toInt());
+    storeData.chartShowPointCount = (u_int16_t)(chartShowPointCount.toInt());
+    storeData.timeZoneOffset = (int8_t)(timeZoneOffset.toInt());
+    
 }

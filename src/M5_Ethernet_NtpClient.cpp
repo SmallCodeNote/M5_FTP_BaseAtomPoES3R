@@ -23,10 +23,9 @@ void M5_Ethernet_NtpClient::updateTimeFromServer(String address, int timezone)
         unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
         unsigned long secsSince1900 = highWord << 16 | lowWord;
         const unsigned long seventyYears = 2208988800UL;
-        unsigned long epoch = secsSince1900 - seventyYears;
-        epoch += timezoneOffset * 3600;
+        unsigned long localEpoch = (secsSince1900 - seventyYears)+timezoneOffset * 3600;
 
-        lastEpoch = epoch;
+        lastEpoch = localEpoch;
         lastMillis = millis();
         intMillis = millis();
         currentEpoch = lastEpoch;
@@ -45,10 +44,9 @@ void M5_Ethernet_NtpClient::updateTimeFromString(String timeString, int timezone
 {
     timezoneOffset = timezone;
 
-    unsigned long epoch = convertTimeStringToEpoch(timeString);
-    epoch -= timezoneOffset * 3600;
-
-    lastEpoch = epoch;
+    unsigned long localEpoch = convertTimeStringToEpoch(timeString);
+    
+    lastEpoch = localEpoch;
     lastMillis = millis();
     intMillis = millis();
     currentEpoch = lastEpoch;
@@ -58,9 +56,13 @@ void M5_Ethernet_NtpClient::updateTimeFromString(String timeString, int timezone
 
 unsigned long M5_Ethernet_NtpClient::convertTimeStringToEpoch(String timeString)
 {
+    M5_LOGD("timeString = %s",timeString.c_str());
     tmElements_t tm;
     int year, month, day, hour, minute, second;
     sscanf(timeString.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second);
+
+    M5_LOGD("%d/%d/%d %d:%d:%d",year, month, day, hour, minute, second);
+
     tm.Year = year - 1970;
     tm.Month = month;
     tm.Day = day;
