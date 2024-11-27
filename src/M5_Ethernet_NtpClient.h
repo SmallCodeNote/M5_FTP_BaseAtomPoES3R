@@ -54,10 +54,10 @@ public:
     String readSecond(unsigned long Epoch);
 
     String convertTimeEpochToString();
+    String convertTimeEpochToString(unsigned long _currentEpoch);
     String convertTimeEpochToString(String format);
-    String convertTimeEpochToString(String format,unsigned long _currentEpoch);
+    String convertTimeEpochToString(String format, unsigned long _currentEpoch);
     unsigned long convertTimeStringToEpoch(String timeString);
-
 };
 
 #endif

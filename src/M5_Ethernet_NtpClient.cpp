@@ -13,7 +13,7 @@ void M5_Ethernet_NtpClient::updateTimeFromServer(String address)
 void M5_Ethernet_NtpClient::updateTimeFromServer(String address, int timezone)
 {
     timezoneOffset = timezone;
-    M5_LOGI("UpdateFromNTPserver");
+
     sendNTPpacket(address.c_str());
     delay(800);
     if (Udp.parsePacket())
@@ -23,15 +23,17 @@ void M5_Ethernet_NtpClient::updateTimeFromServer(String address, int timezone)
         unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
         unsigned long secsSince1900 = highWord << 16 | lowWord;
         const unsigned long seventyYears = 2208988800UL;
-        unsigned long localEpoch = (secsSince1900 - seventyYears)+timezoneOffset * 3600;
+        unsigned long localEpoch = (secsSince1900 - seventyYears) + timezoneOffset * 3600;
 
         lastEpoch = localEpoch;
         lastMillis = millis();
         intMillis = millis();
         currentEpoch = lastEpoch;
 
+        M5_LOGI("Success UpdateFromNTPserver %s , timezone = %d", address, timezone);
         return;
     }
+    M5_LOGI("False UpdateFromNTPserver %s , timezone = %d", address, timezone);
     intMillis = millis();
 }
 
@@ -45,7 +47,7 @@ void M5_Ethernet_NtpClient::updateTimeFromString(String timeString, int timezone
     timezoneOffset = timezone;
 
     unsigned long localEpoch = convertTimeStringToEpoch(timeString);
-    
+
     lastEpoch = localEpoch;
     lastMillis = millis();
     intMillis = millis();
@@ -56,12 +58,12 @@ void M5_Ethernet_NtpClient::updateTimeFromString(String timeString, int timezone
 
 unsigned long M5_Ethernet_NtpClient::convertTimeStringToEpoch(String timeString)
 {
-    M5_LOGD("timeString = %s",timeString.c_str());
+    M5_LOGD("timeString = %s", timeString.c_str());
     tmElements_t tm;
     int year, month, day, hour, minute, second;
     sscanf(timeString.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second);
 
-    M5_LOGD("%d/%d/%d %d:%d:%d",year, month, day, hour, minute, second);
+    M5_LOGD("%d/%d/%d %d:%d:%d", year, month, day, hour, minute, second);
 
     tm.Year = year - 1970;
     tm.Month = month;
@@ -77,6 +79,11 @@ String M5_Ethernet_NtpClient::convertTimeEpochToString()
     return convertTimeEpochToString("yyyy/mm/dd HH:mm:ss", currentEpoch);
 }
 
+String M5_Ethernet_NtpClient::convertTimeEpochToString(unsigned long _currentEpoch)
+{
+    return convertTimeEpochToString("yyyy/mm/dd HH:mm:ss", _currentEpoch);
+}
+
 String M5_Ethernet_NtpClient::convertTimeEpochToString(String format)
 {
     return convertTimeEpochToString(format, currentEpoch);
@@ -84,6 +91,9 @@ String M5_Ethernet_NtpClient::convertTimeEpochToString(String format)
 
 String M5_Ethernet_NtpClient::convertTimeEpochToString(String format, unsigned long _currentEpoch)
 {
+    if (_currentEpoch == 0)
+        return String("Time information is not available.");
+
     String ss = readSecond(_currentEpoch);
     String mm = readMinute(_currentEpoch);
     String HH = readHour(_currentEpoch);

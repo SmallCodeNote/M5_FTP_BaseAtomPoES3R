@@ -22,12 +22,6 @@
 #define MOSI 8
 #define CS 6
 
-void TimeUpdateLoop(void *arg);
-void TimeServerAccessLoop(void *arg);
-void ButtonKeepCountLoop(void *arg);
-void ShotLoop(void *arg);
-void ShotTask(void *arg);
-
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 
 EthernetClient FtpClient(21);
@@ -131,46 +125,54 @@ void setup()
   NtpClient.begin();
   NtpClient.getTime(ntpSrvIP_String, (int)(storeData.timeZoneOffset));
 
-  xTaskCreatePinnedToCore(TimeUpdateLoop, "TimeUpdateLoop", 4096, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(TimeServerAccessLoop, "TimeServerAccessLoop", 4096, NULL, 6, NULL, 0);
-  xTaskCreatePinnedToCore(ButtonKeepCountLoop, "ButtonKeepCountLoop", 4096, NULL, 5, NULL, 1);
+  xTaskCreatePinnedToCore(TimeUpdateLoop, "TimeUpdateLoop", 4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(TimeServerAccessLoop, "TimeServerAccessLoop", 4096, NULL, 0, NULL, 0);
+  xTaskCreatePinnedToCore(ButtonKeepCountLoop, "ButtonKeepCountLoop", 4096, NULL, 0, NULL, 1);
   xTaskCreatePinnedToCore(ShotLoop, "ShotLoop", 4096, NULL, 3, NULL, 1);
+  xTaskCreatePinnedToCore(FTPConnectLoop, "FTPConnectLoop", 4096, NULL, 0, NULL, 1);
 
-  M5.Display.println(String(storeData.deviceName));
-  M5.Display.println("Board: " + getBoardName(M5.getBoard()));
-  M5.Display.println("HOST: " + deviceIP_String);
+  if (M5.getDisplayCount() > 0)
+  {
+    M5.Display.println(String(storeData.deviceName));
+    M5.Display.println("Board: " + getBoardName(M5.getBoard()));
+    M5.Display.println("HOST: " + deviceIP_String);
+  }
 }
 
 void loop()
 {
   delay(189);
   HTTP_UI();
-  M5.Display.setTextFont(6);
-  M5.Display.setCursor(8, 30);
-  M5.Display.println(SensorValueString);
 
-  M5.Display.setTextFont(1);
-  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_STA));
-  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_SOFTAP));
-  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_BT));
-  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_ETH));
-
-  String ntpAddressLine = "NTP:" + ntpSrvIP_String;
-  for (u_int8_t i = 0; i < (21 - ntpAddressLine.length()) / 2; i++)
+  if (M5.getDisplayCount() > 0)
   {
-    M5.Display.print(" ");
-  }
+    M5.Display.setTextFont(6);
+    M5.Display.setCursor(8, 30);
+    M5.Display.println(SensorValueString);
 
-  M5.Display.println(ntpAddressLine);
+    M5.Display.setTextFont(1);
+    M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_STA));
+    M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_SOFTAP));
+    M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_BT));
+    M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_ETH));
 
-  if (NtpClient.enable())
-  {
-    M5.Display.println(" " + NtpClient.convertTimeEpochToString() + "   ");
-  }
-  else
-  {
-    M5.Display.println("time information can not use now.     ");
-  }
+    String ntpAddressLine = "NTP:" + ntpSrvIP_String;
+    for (u_int8_t i = 0; i < (21 - ntpAddressLine.length()) / 2; i++)
+    {
+      M5.Display.print(" ");
+    }
 
+    M5.Display.println(ntpAddressLine);
+
+    if (NtpClient.enable())
+    {
+      M5.Display.println(" " + NtpClient.convertTimeEpochToString() + "   ");
+    }
+    else
+    {
+      M5.Display.println("time information can not use now.     ");
+    }
+  }
+  
   Ethernet.maintain();
 }

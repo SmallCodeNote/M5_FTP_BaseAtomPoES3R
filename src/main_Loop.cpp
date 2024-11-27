@@ -7,6 +7,9 @@
 #include "main_HTTP_UI.h"
 #include "main_Loop.h"
 
+#define QUEUEFTP_LENGTH 64
+QueueHandle_t xQueueFTP;
+
 void TimeUpdateLoop(void *arg)
 {
   M5_LOGI("TimeUpdateLoop Start  ");
@@ -90,12 +93,6 @@ void ButtonKeepCountLoop(void *arg)
   vTaskDelete(NULL);
 }
 
-typedef struct
-{
-  unsigned long currentEpoch;
-  uint16_t tofDeviceValue;
-} ShotTaskParams;
-
 unsigned long ShotStartOffset()
 {
   const int intervals[] = {3600, 600, 300, 10, 5};
@@ -132,28 +129,31 @@ bool ShotTaskRunTrigger(unsigned long currentEpoch)
   return false;
 }
 
+typedef struct
+{
+  unsigned long currentEpoch;
+  uint16_t tofDeviceValue;
+} ShotTaskParams;
+
 void ShotLoop(void *arg)
 {
   unsigned long lastWriteEpoc = 0;
   unsigned long lastCheckEpoc = 0;
-  ShotTaskParams taskParam;
+
   uint16_t tofDeviceValue = 0;
   char tofDeviceValueChars[5];
 
-  String directoryName_Past = "";
-
   M5_LOGI("ShotLoop Start  ");
 
-  if (Ethernet.linkStatus() == LinkON)
-    ftp.OpenConnection();
+  xQueueFTP = xQueueCreate(QUEUEFTP_LENGTH, sizeof(ShotTaskParams));
 
   while (true)
   {
     tofDeviceValue = tofDevice.read();
     sprintf(tofDeviceValueChars, "%04d", tofDeviceValue);
     SensorValueString = String(tofDeviceValueChars);
-    
-    if ((Ethernet.linkStatus() == LinkON) && storeData.ftpSaveInterval >= 1)
+
+    if (storeData.ftpSaveInterval >= 1)
     {
       unsigned long currentEpoch = NtpClient.currentEpoch;
       if (currentEpoch < lastWriteEpoc)
@@ -165,72 +165,83 @@ void ShotLoop(void *arg)
       lastCheckEpoc = currentEpoch;
       unsigned long shotStartOffset = ShotStartOffset();
 
-      // if (currentEpoch + checkStartOffset >= lastWriteEpoc + storeData.ftpSaveInterval)
       if (currentEpoch >= lastWriteEpoc + storeData.ftpSaveInterval)
       {
-        if (!ftp.isConnected())
-          ftp.OpenConnection();
         if ((shotStartOffset == 0 || ShotTaskRunTrigger(currentEpoch)))
         {
+
+          if (uxQueueMessagesWaiting(xQueueFTP) >= QUEUEFTP_LENGTH)
+          {
+            ShotTaskParams taskParamDEL;
+            xQueueReceive(xQueueFTP, &taskParamDEL, 0);
+            M5_LOGW("xQueueFTP overflow");
+          }
+
+          ShotTaskParams taskParam;
           taskParam.currentEpoch = currentEpoch;
           taskParam.tofDeviceValue = tofDeviceValue;
-          xTaskCreatePinnedToCore(ShotTask, "ShotTask", 4096, &taskParam, 4, NULL, 1);
+          xQueueSend(xQueueFTP, &taskParam, 0);
+          // xTaskCreatePinnedToCore(ShotTask, "ShotTask", 4096, &taskParam, 4, NULL, 1);
 
           lastWriteEpoc = currentEpoch;
-          delay(1000);
-          continue;
         }
       }
     }
     delay(100);
   }
-
-  if (ftp.isConnected())
-    ftp.CloseConnection();
-
   vTaskDelete(NULL);
 }
 
-String LastWriteDirectoryPath = "";
-void ShotTask(void *param)
+void FTPConnectLoop(void *param)
 {
-  String directoryPath = "/" + deviceName;
-
-  ShotTaskParams *taskParam = (ShotTaskParams *)param;
-  unsigned long currentEpoch = taskParam->currentEpoch;
-  uint16_t tofDeviceValue = taskParam->tofDeviceValue;
-
-  String ss = NtpClient.readSecond(currentEpoch);
-  String mm = NtpClient.readMinute(currentEpoch);
-  String HH = NtpClient.readHour(currentEpoch);
-  String DD = NtpClient.readDay(currentEpoch);
-  String MM = NtpClient.readMonth(currentEpoch);
-  String YYYY = NtpClient.readYear(currentEpoch);
-
-  String filePath = directoryPath + "/" + YYYY + MM + DD ;
-
-  if (storeData.ftpSaveInterval > 60)
+  while (true)
   {
-    directoryPath = "/" + deviceName + "/" + YYYY ;
-    filePath = directoryPath + "/" + YYYY + MM ;
-  }
-  else
-  {
-    directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM ;
-    filePath = directoryPath + "/" + YYYY + MM + DD ;
-  }
+    if (Ethernet.linkStatus() == LinkON && uxQueueMessagesWaiting(xQueueFTP) > 0)
+    {
+      ftp.OpenConnection();
+      ShotTaskParams taskParam;
 
-  String TimeLine = YYYY + "/" + MM + "/" + DD + " " + HH + ":" + mm + ":" + ss;
+      while (xQueueReceive(xQueueFTP, &taskParam, 0) == pdTRUE)
+      {
+        unsigned long currentEpoch = taskParam.currentEpoch;
+        uint16_t tofDeviceValue = taskParam.tofDeviceValue;
 
-  if (true)
-  {
-    // ftp.OpenConnection();
-    if (LastWriteDirectoryPath != directoryPath)
-      ftp.MakeDirRecursive(directoryPath);
-    ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
-    // ftp.CloseConnection();
+        String directoryPath = "/" + deviceName;
+
+        String ss = NtpClient.readSecond(currentEpoch);
+        String mm = NtpClient.readMinute(currentEpoch);
+        String HH = NtpClient.readHour(currentEpoch);
+        String DD = NtpClient.readDay(currentEpoch);
+        String MM = NtpClient.readMonth(currentEpoch);
+        String YYYY = NtpClient.readYear(currentEpoch);
+
+        String filePath = directoryPath + "/" + YYYY + MM + DD;
+
+        if (storeData.ftpSaveInterval > 60)
+        {
+          directoryPath = "/" + deviceName + "/" + YYYY;
+          filePath = directoryPath + "/" + YYYY + MM;
+        }
+        else
+        {
+          directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM;
+          filePath = directoryPath + "/" + YYYY + MM + DD;
+        }
+        String TimeLine = YYYY + "/" + MM + "/" + DD + " " + HH + ":" + mm + ":" + ss;
+
+        uint16_t r = ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
+        M5_LOGI("ftp.AppendTextLine: %u %s", r, (TimeLine + "," + String(tofDeviceValue)).c_str());
+
+        if (r != 250u)
+        {
+          ftp.MakeDirRecursive(directoryPath);
+          r = ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
+          M5_LOGI("ftp.AppendTextLine Retry: %u", r);
+        }
+      }
+      ftp.CloseConnection();
+    }
+    delay(1000);
   }
-
-  LastWriteDirectoryPath = directoryPath;
   vTaskDelete(NULL);
 }

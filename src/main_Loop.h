@@ -4,6 +4,7 @@
 void TimeUpdateLoop(void *arg);
 void TimeServerAccessLoop(void *arg);
 void ButtonKeepCountLoop(void *arg);
+void FTPConnectLoop(void *arg);
 
 void ShotLoop(void *arg);
 void ShotTask(void *param);

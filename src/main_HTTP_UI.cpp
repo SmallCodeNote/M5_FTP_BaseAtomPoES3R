@@ -40,6 +40,15 @@ void HTTP_UI_JSON_sensorValueNow(EthernetClient client)
   client.println("}");
 }
 
+void HTTP_UI_JSON_unitTimeNow(EthernetClient client)
+{
+  HTTP_UI_PART_ResponceHeader(client, "application/json");
+  client.print("{");
+  client.print("\"unitTime\":");
+  client.printf("\"%s\"", NtpClient.convertTimeEpochToString().c_str());
+  client.println("}");
+}
+
 void HTTP_UI_PAGE_view(EthernetClient client)
 {
   HTTP_UI_PART_ResponceHeader(client, "text/html");
@@ -166,7 +175,16 @@ void HTTP_UI_PAGE_configParam(EthernetClient client)
   client.println("</ul>");
   client.println("</form>");
 
+  client.println("<br />");
+  client.printf("<a href=\"http://%s/top.html\">Return Top</a><br>", deviceIP_String.c_str());
+
   HTTP_UI_PART_HTMLFooter(client);
+}
+
+void TaskRestart(void *arg)
+{
+  delay(5000);
+  ESP.restart();
 }
 
 void HTTP_UI_POST_configParam(EthernetClient client)
@@ -201,10 +219,13 @@ void HTTP_UI_POST_configParam(EthernetClient client)
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<br />");
   client.println("SUCCESS PARAMETER UPDATE.");
+
+  client.println("<br />");
+  client.printf("<a href=\"http://%s/top.html\">Return Top</a><br>", deviceIP_String.c_str());
+
   HTTP_UI_PART_HTMLFooter(client);
 
-  delay(1000);
-  ESP.restart();
+  xTaskCreatePinnedToCore(TaskRestart, "TaskRestart", 4096, NULL, 11, NULL, 1);
 }
 
 void HTTP_UI_PAGE_configTime(EthernetClient client)
@@ -215,12 +236,16 @@ void HTTP_UI_PAGE_configTime(EthernetClient client)
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<br />");
 
+  client.println("<ul id=\"unitTime\">");
+  client.println("<li>unitTime: <span id=\"unitTime\"></span></li>");
+  client.println("</ul>");
+
   client.println("<form action=\"/configTimeSuccess.html\" method=\"post\">");
   client.println("<ul>");
 
   String currentLine = "";
   String timeString = "";
-  HTML_PUT_LI_INPUT(timeString);
+  HTML_PUT_LI_WIDEINPUT(timeString);
 
   client.println("<li class=\"button\">");
   client.println("<button type=\"submit\">Save</button>");
@@ -228,35 +253,62 @@ void HTTP_UI_PAGE_configTime(EthernetClient client)
   client.println("</ul>");
   client.println("</form>");
 
+  client.println("<br />");
+  client.printf("<a href=\"http://%s/top.html\">Return Top</a><br>", deviceIP_String.c_str());
+
   client.println("<script>");
+
   client.println("function updateTimeString() {");
   client.println(" document.getElementById('timeString').value = new Date().toLocaleString();");
   client.println("}");
   client.println("setInterval(updateTimeString, 1000);");
+
+  client.println("function fetchData() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var data = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('unitTime').innerText = data.unitTime;");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.open('GET', '/unitTimeNow.json', true);");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("setInterval(fetchData, 1000);");
+
+  client.println("fetchData();");
   client.println("updateTimeString();");
   client.println("</script>");
 
   HTTP_UI_PART_HTMLFooter(client);
 }
 
-String urlDecode(String input) {
+String urlDecode(String input)
+{
   String decoded = "";
   char temp[] = "0x00";
   unsigned int i, j;
-  for (i = 0; i < input.length(); i++) {
-    if (input[i] == '%') {
+  for (i = 0; i < input.length(); i++)
+  {
+    if (input[i] == '%')
+    {
       temp[2] = input[i + 1];
       temp[3] = input[i + 2];
       decoded += (char)strtol(temp, NULL, 16);
       i += 2;
-    } else if (input[i] == '+') {
+    }
+    else if (input[i] == '+')
+    {
       decoded += ' ';
-    } else {
+    }
+    else
+    {
       decoded += input[i];
     }
   }
   return decoded;
 }
+
 void HTTP_UI_POST_configTime(EthernetClient client)
 {
   String currentLine = "";
@@ -274,7 +326,7 @@ void HTTP_UI_POST_configTime(EthernetClient client)
   HTTP_GET_PARAM_FROM_POST(timeString);
 
   timeString = urlDecode(timeString);
-  M5_LOGI("posted timeString = %s",timeString.c_str());
+  M5_LOGI("posted timeString = %s", timeString.c_str());
   NtpClient.updateTimeFromString(timeString);
 
   HTTP_UI_PART_ResponceHeader(client, "text/html");
@@ -282,9 +334,66 @@ void HTTP_UI_POST_configTime(EthernetClient client)
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<br />");
   client.println("SUCCESS TIME UPDATE.");
+
+  client.println("<ul id=\"unitTime\">");
+  client.println("<li>unitTime: <span id=\"unitTime\"></span></li>");
+  client.println("</ul>");
+
+  client.printf("<a href=\"http://%s/top.html\">Return Top</a><br>", deviceIP_String.c_str());
+
+  client.println("<script>");
+  client.println("function fetchData() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var data = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('unitTime').innerText = data.unitTime;");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.open('GET', '/unitTimeNow.json', true);");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("setInterval(fetchData, 1000);");
+  client.println("fetchData();");
+  client.println("</script>");
+
   HTTP_UI_PART_HTMLFooter(client);
+  return;
 }
 
+void HTTP_UI_PAGE_unitTime(EthernetClient client)
+{
+  HTTP_UI_PART_ResponceHeader(client, "text/html");
+  HTTP_UI_PART_HTMLHeader(client);
+
+  client.println("<h1>" + deviceName + "</h1>");
+  client.println("<br />");
+
+  client.println("<ul id=\"unitTime\">");
+  client.println("<li>unitTime: <span id=\"unitTime\"></span></li>");
+  client.println("</ul>");
+
+  client.println("<br>");
+  client.printf("<a href=\"http://%s/top.html\">Return Top</a><br>", deviceIP_String.c_str());
+
+  client.println("<script>");
+  client.println("function fetchData() {");
+  client.println("  var xhr = new XMLHttpRequest();");
+  client.println("  xhr.onreadystatechange = function() {");
+  client.println("    if (xhr.readyState == 4 && xhr.status == 200) {");
+  client.println("      var data = JSON.parse(xhr.responseText);");
+  client.println("      document.getElementById('unitTime').innerText = data.unitTime;");
+  client.println("    }");
+  client.println("  };");
+  client.println("  xhr.open('GET', '/unitTimeNow.json', true);");
+  client.println("  xhr.send();");
+  client.println("}");
+  client.println("setInterval(fetchData, 1000);");
+  client.println("fetchData();");
+  client.println("</script>");
+
+  HTTP_UI_PART_HTMLFooter(client);
+}
 
 void HTTP_UI_PAGE_top(EthernetClient client)
 {
@@ -294,12 +403,17 @@ void HTTP_UI_PAGE_top(EthernetClient client)
   client.println("<h1>" + deviceName + "</h1>");
   client.println("<a href=\"/view.html\">View Page</a><br>");
   client.println("<a href=\"/chart.html\">Chart Page</a><br>");
+  client.println("<a href=\"/unitTime.html\">Unit Time</a><br>");
+
+  client.println("<br>");
+  client.println("<hr>");
+  client.println("<br>");
+
   client.println("<a href=\"/configParam.html\">Config Parameter Page</a><br>");
   client.println("<a href=\"/configTime.html\">Config Time Page</a><br>");
 
   HTTP_UI_PART_HTMLFooter(client);
 }
-
 
 void HTTP_UI_PAGE_notFound(EthernetClient client)
 {
@@ -315,7 +429,6 @@ void HTTP_UI_PAGE_notFound(EthernetClient client)
   HTTP_UI_PART_HTMLFooter(client);
 }
 
-
 void sendPage(EthernetClient client, String page)
 {
   M5_LOGV("page = %s", page.c_str());
@@ -323,6 +436,10 @@ void sendPage(EthernetClient client, String page)
   if (page == "sensorValueNow.json")
   {
     HTTP_UI_JSON_sensorValueNow(client);
+  }
+  else if (page == "unitTimeNow.json")
+  {
+    HTTP_UI_JSON_unitTimeNow(client);
   }
   else if (page == "view.html")
   {
@@ -347,6 +464,10 @@ void sendPage(EthernetClient client, String page)
   else if (page == "configTime.html")
   {
     HTTP_UI_PAGE_configTime(client);
+  }
+  else if (page == "unitTime.html")
+  {
+    HTTP_UI_PAGE_unitTime(client);
   }
   else if (page == "configTimeSuccess.html")
   {
@@ -414,6 +535,11 @@ void HTTP_UI()
           getRequest = true;
           page = "sensorValueNow.json";
         }
+        else if (currentLine.endsWith("GET /unitTimeNow.json"))
+        {
+          getRequest = true;
+          page = "unitTimeNow.json";
+        }
         else if (currentLine.endsWith("GET /chart.js"))
         {
           getRequest = true;
@@ -438,6 +564,11 @@ void HTTP_UI()
         {
           getRequest = true;
           page = "configTime.html";
+        }
+        else if (currentLine.endsWith("GET /unitTime.html"))
+        {
+          getRequest = true;
+          page = "unitTime.html";
         }
         else if (currentLine.endsWith("GET /top.html") || currentLine.endsWith("GET /"))
         {
