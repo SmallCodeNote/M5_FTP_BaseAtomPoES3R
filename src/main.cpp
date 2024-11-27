@@ -151,10 +151,21 @@ void loop()
     M5.Display.println(SensorValueString);
 
     M5.Display.setTextFont(1);
-    M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_STA));
-    M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_SOFTAP));
-    M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_BT));
+    //  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_STA));
+    //  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_WIFI_SOFTAP));
+    //  M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_BT));
     M5.Display.println("  " + getInterfaceMacAddress(ESP_MAC_ETH));
+
+    if (Ethernet.linkStatus() == LinkON)
+    {
+      M5.Display.println("  Ethernet: Enable ");
+    }
+    else
+    {
+      M5.Display.println("  Ethernet: Disable");
+    }
+    M5.Display.printf("  Queue: %04d\n", uxQueueMessagesWaiting(xQueueFTP));
+    M5.Display.println("                ");
 
     String ntpAddressLine = "NTP:" + ntpSrvIP_String;
     for (u_int8_t i = 0; i < (21 - ntpAddressLine.length()) / 2; i++)
@@ -173,6 +184,6 @@ void loop()
       M5.Display.println("time information can not use now.     ");
     }
   }
-  
+
   Ethernet.maintain();
 }

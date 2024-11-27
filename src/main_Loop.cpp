@@ -199,8 +199,8 @@ void FTPConnectLoop(void *param)
     if (Ethernet.linkStatus() == LinkON && uxQueueMessagesWaiting(xQueueFTP) > 0)
     {
       ftp.OpenConnection();
-      ShotTaskParams taskParam;
 
+      ShotTaskParams taskParam;
       while (xQueueReceive(xQueueFTP, &taskParam, 0) == pdTRUE)
       {
         unsigned long currentEpoch = taskParam.currentEpoch;
@@ -228,20 +228,16 @@ void FTPConnectLoop(void *param)
           filePath = directoryPath + "/" + YYYY + MM + DD;
         }
         String TimeLine = YYYY + "/" + MM + "/" + DD + " " + HH + ":" + mm + ":" + ss;
-
-        uint16_t r = ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
+        uint16_t r = 0;
+        r = ftp.MakeDirRecursive(directoryPath);
+        M5_LOGI("ftp.MakeDirRecursive: %u", r);
+        r = ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
         M5_LOGI("ftp.AppendTextLine: %u %s", r, (TimeLine + "," + String(tofDeviceValue)).c_str());
 
-        if (r != 250u)
-        {
-          ftp.MakeDirRecursive(directoryPath);
-          r = ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
-          M5_LOGI("ftp.AppendTextLine Retry: %u", r);
-        }
       }
       ftp.CloseConnection();
     }
-    delay(1000);
+    delay(10000);
   }
   vTaskDelete(NULL);
 }

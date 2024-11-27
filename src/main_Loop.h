@@ -11,5 +11,6 @@ void ShotTask(void *param);
 bool ShotTaskRunTrigger(unsigned long currentEpoch);
 unsigned long CheckStartOffset();
 
+extern QueueHandle_t xQueueFTP;
 
 #endif
