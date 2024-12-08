@@ -13,20 +13,11 @@ QueueHandle_t xQueueFTP;
 void TimeUpdateLoop(void *arg)
 {
   M5_LOGI("TimeUpdateLoop Start  ");
-  unsigned long lastepoc = 0;
 
   while (true)
   {
-    delay(200);
-    String timeLine = NtpClient.getTime(ntpSrvIP_String, +9);
-    if (lastepoc > NtpClient.currentEpoch)
-      lastepoc = 0;
-
-    if (lastepoc + 10 <= NtpClient.currentEpoch)
-    {
-      M5.Log.println(("timeLine= " + timeLine).c_str());
-      lastepoc = NtpClient.currentEpoch;
-    }
+    delay(100);
+    NtpClient.updateCurrentEpoch();
   }
 
   vTaskDelete(NULL);
@@ -35,17 +26,32 @@ void TimeUpdateLoop(void *arg)
 void TimeServerAccessLoop(void *arg)
 {
   M5_LOGI("TimeServerAccessLoop Start  ");
-  unsigned long count = 0;
+  unsigned long count = 60;
   while (true)
   {
     delay(10000);
-    if (count > 60)
+    if (count >= 60)
     {
-      NtpClient.updateTimeFromServer(ntpSrvIP_String, +9);
-      count = 0;
+      M5_LOGV("");
+      if (xSemaphoreTake(mutex_Ethernet, 0) == pdTRUE)
+      {
+        M5_LOGV("");
+        NtpClient.updateTimeFromServer(ntpSrvIP_String, +9);
+        M5_LOGV("");
+        count = 0;
+        xSemaphoreGive(mutex_Ethernet);
+      }
+      else
+      {
+        M5_LOGW("mutex can not take.");
+      }
+      M5_LOGV("");
+    }
+    else
+    {
+      count++;
     }
   }
-
   vTaskDelete(NULL);
 }
 
@@ -140,7 +146,9 @@ void ShotLoop(void *arg)
   unsigned long lastWriteEpoc = 0;
   unsigned long lastCheckEpoc = 0;
 
-  uint16_t tofDeviceValue = 0;
+  uint32_t tofDeviceValue = 0;
+  uint32_t tofDeviceAverageCount = 16;
+
   char tofDeviceValueChars[5];
 
   M5_LOGI("ShotLoop Start  ");
@@ -149,7 +157,14 @@ void ShotLoop(void *arg)
 
   while (true)
   {
-    tofDeviceValue = tofDevice.read();
+    int readCount = tofDeviceAverageCount;
+    while (readCount)
+    {
+      tofDeviceValue += tofDevice.read();
+      readCount--;
+    }
+    tofDeviceValue = tofDeviceValue / tofDeviceAverageCount;
+
     sprintf(tofDeviceValueChars, "%04d", tofDeviceValue);
     SensorValueString = String(tofDeviceValueChars);
 
@@ -198,44 +213,62 @@ void FTPConnectLoop(void *param)
   {
     if (Ethernet.linkStatus() == LinkON && uxQueueMessagesWaiting(xQueueFTP) > 0)
     {
-      ftp.OpenConnection();
-
-      ShotTaskParams taskParam;
-      while (xQueueReceive(xQueueFTP, &taskParam, 0) == pdTRUE)
+      if (xSemaphoreTake(mutex_Ethernet, 0) == pdTRUE)
       {
-        unsigned long currentEpoch = taskParam.currentEpoch;
-        uint16_t tofDeviceValue = taskParam.tofDeviceValue;
+        M5_LOGD("mutex take");
+        ftp.OpenConnection();
 
-        String directoryPath = "/" + deviceName;
-
-        String ss = NtpClient.readSecond(currentEpoch);
-        String mm = NtpClient.readMinute(currentEpoch);
-        String HH = NtpClient.readHour(currentEpoch);
-        String DD = NtpClient.readDay(currentEpoch);
-        String MM = NtpClient.readMonth(currentEpoch);
-        String YYYY = NtpClient.readYear(currentEpoch);
-
-        String filePath = directoryPath + "/" + YYYY + MM + DD;
-
-        if (storeData.ftpSaveInterval > 60)
+        if (!ftp.isConnected())
         {
-          directoryPath = "/" + deviceName + "/" + YYYY;
-          filePath = directoryPath + "/" + YYYY + MM;
+          M5_LOGW("ftp is not Connected.");
         }
         else
         {
-          directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM;
-          filePath = directoryPath + "/" + YYYY + MM + DD;
-        }
-        String TimeLine = YYYY + "/" + MM + "/" + DD + " " + HH + ":" + mm + ":" + ss;
-        uint16_t r = 0;
-        r = ftp.MakeDirRecursive(directoryPath);
-        M5_LOGI("ftp.MakeDirRecursive: %u", r);
-        r = ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
-        M5_LOGI("ftp.AppendTextLine: %u %s", r, (TimeLine + "," + String(tofDeviceValue)).c_str());
+          ShotTaskParams taskParam;
+          while (xQueueReceive(xQueueFTP, &taskParam, 0) == pdTRUE)
+          {
+            unsigned long currentEpoch = taskParam.currentEpoch;
+            uint16_t tofDeviceValue = taskParam.tofDeviceValue;
 
+            String directoryPath = "/" + deviceName;
+
+            String ss = NtpClient.readSecond(currentEpoch);
+            String mm = NtpClient.readMinute(currentEpoch);
+            String HH = NtpClient.readHour(currentEpoch);
+            String DD = NtpClient.readDay(currentEpoch);
+            String MM = NtpClient.readMonth(currentEpoch);
+            String YYYY = NtpClient.readYear(currentEpoch);
+
+            String filePath = directoryPath + "/" + YYYY + MM + DD;
+
+            if (storeData.ftpSaveInterval > 60)
+            {
+              directoryPath = "/" + deviceName + "/" + YYYY;
+              filePath = directoryPath + "/" + YYYY + MM;
+            }
+            else
+            {
+              directoryPath = "/" + deviceName + "/" + YYYY + "/" + YYYY + MM;
+              filePath = directoryPath + "/" + YYYY + MM + DD;
+            }
+            String TimeLine = YYYY + "/" + MM + "/" + DD + " " + HH + ":" + mm + ":" + ss;
+            uint16_t r = 0;
+            r = ftp.MakeDirRecursive(directoryPath);
+            M5_LOGI("ftp.MakeDirRecursive: %u", r);
+            r = ftp.AppendTextLine(filePath + ".csv", TimeLine + "," + String(tofDeviceValue));
+            M5_LOGI("ftp.AppendTextLine: %u %s", r, (TimeLine + "," + String(tofDeviceValue)).c_str());
+          }
+          ftp.CloseConnection();
+        }
+        xSemaphoreGive(mutex_Ethernet);
+        M5_LOGI("mutex give");
       }
-      ftp.CloseConnection();
+      else
+      {
+        M5_LOGW("mutex can not take.");
+        delay(1000);
+        continue;
+      }
     }
     delay(10000);
   }

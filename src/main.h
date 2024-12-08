@@ -9,4 +9,6 @@ extern M5_Ethernet_FtpClient ftp;
 extern M5_Ethernet_NtpClient NtpClient;
 extern VL53L1X tofDevice;;
 
+extern SemaphoreHandle_t mutex_Ethernet;
+
 #endif

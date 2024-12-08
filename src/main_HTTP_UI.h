@@ -56,6 +56,21 @@ static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
 static const char *_STREAM_PART =
     "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 
+
+typedef enum
+{
+  HTTP_UI_MODE_GET,
+  HTTP_UI_MODE_POST
+} HTTP_UI_MODE_t;
+
+struct PageHandler
+{
+  HTTP_UI_MODE_t mode; // GET:0,POST:1
+  const char *page;
+  void (*handler)(EthernetClient);
+};
+
+
 extern EthernetServer HttpUIServer;
 extern String SensorValueString;
 void HTTP_UI();

@@ -429,166 +429,161 @@ void HTTP_UI_PAGE_notFound(EthernetClient client)
   HTTP_UI_PART_HTMLFooter(client);
 }
 
-void sendPage(EthernetClient client, String page)
-{
-  M5_LOGV("page = %s", page.c_str());
 
-  if (page == "sensorValueNow.json")
+
+PageHandler pageHandlers[] = {
+    {HTTP_UI_MODE_GET, "sensorValueNow.json", HTTP_UI_JSON_sensorValueNow},
+    {HTTP_UI_MODE_GET, "unitTimeNow.json", HTTP_UI_JSON_unitTimeNow},
+    {HTTP_UI_MODE_GET, "view.html", HTTP_UI_PAGE_view},
+    {HTTP_UI_MODE_GET, "chart.js", HTTP_UI_JS_ChartJS},
+    {HTTP_UI_MODE_GET, "chart.html", HTTP_UI_PAGE_chart},
+    {HTTP_UI_MODE_GET, "configParam.html", HTTP_UI_PAGE_configParam},
+
+    {HTTP_UI_MODE_GET, "configTime.html", HTTP_UI_PAGE_configTime},
+    {HTTP_UI_MODE_GET, "unitTime.html", HTTP_UI_PAGE_unitTime},
+
+    {HTTP_UI_MODE_GET, "top.html", HTTP_UI_PAGE_top},
+    {HTTP_UI_MODE_POST, "configParamSuccess.html", HTTP_UI_POST_configParam},
+
+    {HTTP_UI_MODE_POST, "configTimeSuccess.html", HTTP_UI_POST_configTime},
+    {HTTP_UI_MODE_GET, " ", HTTP_UI_PAGE_top} // default handler
+};
+
+
+void sendPage(EthernetClient httpClient, String page)
+{
+  M5_LOGI("page = %s", page.c_str());
+
+  size_t numPages = sizeof(pageHandlers) / sizeof(pageHandlers[0]);
+
+  for (size_t i = 0; i < numPages; ++i)
   {
-    HTTP_UI_JSON_sensorValueNow(client);
+    if (page == pageHandlers[i].page)
+    {
+      pageHandlers[i].handler(httpClient);
+      return;
+    }
   }
-  else if (page == "unitTimeNow.json")
-  {
-    HTTP_UI_JSON_unitTimeNow(client);
-  }
-  else if (page == "view.html")
-  {
-    HTTP_UI_PAGE_view(client);
-  }
-  else if (page == "chart.js")
-  {
-    HTTP_UI_JS_ChartJS(client);
-  }
-  else if (page == "chart.html")
-  {
-    HTTP_UI_PAGE_chart(client);
-  }
-  else if (page == "configParam.html")
-  {
-    HTTP_UI_PAGE_configParam(client);
-  }
-  else if (page == "configParamSuccess.html")
-  {
-    HTTP_UI_POST_configParam(client);
-  }
-  else if (page == "configTime.html")
-  {
-    HTTP_UI_PAGE_configTime(client);
-  }
-  else if (page == "unitTime.html")
-  {
-    HTTP_UI_PAGE_unitTime(client);
-  }
-  else if (page == "configTimeSuccess.html")
-  {
-    HTTP_UI_POST_configTime(client);
-  }
-  else if (page == "top.html")
-  {
-    HTTP_UI_PAGE_top(client);
-  }
-  else
-  {
-    HTTP_UI_PAGE_notFound(client);
-  }
+  HTTP_UI_PAGE_notFound(httpClient);
 }
 
 void HTTP_UI()
 {
-  EthernetClient client = HttpUIServer.available();
-  if (client)
+  EthernetClient httpClient = HttpUIServer.available();
+  if (httpClient)
   {
-    M5_LOGV("new client");
-
-    boolean currentLineIsBlank = true;
-    String currentLine = "";
-    String page = "";
-
-    bool getRequest = false;
-
-    while (client.connected())
+    if (xSemaphoreTake(mutex_Ethernet, portMAX_DELAY) == pdTRUE)
     {
-      if (client.available())
+      M5_LOGD("mutex take success");
+
+      unsigned long millis0 = millis();
+      unsigned long millis1 = millis0;
+
+      // unsigned long millisStart = millis0;
+      unsigned long clientStart = millis0;
+
+      M5_LOGI("new httpClient");
+      boolean currentLineIsBlank = true;
+      boolean currentLineIsNotGetPost = false;
+      boolean currentLineHaveEnoughLength = false;
+
+      String currentLine = "";
+      String page = "";
+      bool getRequest = false;
+
+      size_t numPages = sizeof(pageHandlers) / sizeof(pageHandlers[0]);
+
+      unsigned long saveTimeout = httpClient.getTimeout();
+      M5_LOGI("default Timeout = %u", saveTimeout);
+      httpClient.setTimeout(1000);
+
+      unsigned long loopCount = 0;
+      unsigned long charCount = 0;
+
+      while (httpClient.connected())
       {
-        char c = client.read();
-        M5.Log.printf("%c", c); // Serial.write(c);
-        if (c == '\n' && currentLineIsBlank)
+        loopCount++;
+        if (httpClient.available())
         {
-          M5_LOGI("%s", currentLine);
+          char c = httpClient.read();
+          charCount++;
 
-          if (getRequest)
+          if (c == '\n' && currentLineIsBlank) // Request End Check ( request end line = "\r\n")
           {
-            sendPage(client, page);
+            // Request End task
+            if (getRequest)
+            {
+              sendPage(httpClient, page);
+            }
+            else
+            {
+              HTTP_UI_PAGE_notFound(httpClient);
+            }
+            M5_LOGD("break from request line end.");
             break;
           }
-          else
+
+          if (c == '\n') // Line End
           {
-            HTTP_UI_PAGE_notFound(client);
-            break;
+            M5_LOGV("%s", currentLine.c_str());
+            currentLineIsBlank = true, currentLine = "";
+            currentLineIsNotGetPost = false;
+            currentLineHaveEnoughLength = false;
+            millis0 = millis();
+          }
+          else if (c != '\r') // Line have request char
+          {
+            currentLineIsBlank = false, currentLine += c;
           }
 
-          break;
-        }
-        if (c == '\n')
-        {
-          currentLineIsBlank = true;
-          currentLine = "";
-        }
-        else if (c != '\r')
-        {
-          currentLineIsBlank = false;
-          currentLine += c;
+          if (!currentLineHaveEnoughLength && currentLine.length() > 6)
+          {
+            currentLineHaveEnoughLength = true;
+          }
+
+          if (!currentLineIsNotGetPost && currentLineHaveEnoughLength && (!currentLine.startsWith("GET /") && !currentLine.startsWith("POST /")))
+          {
+            currentLineIsNotGetPost = true;
+          }
+
+          if (currentLineHaveEnoughLength && !currentLineIsNotGetPost && !getRequest)
+          {
+            for (size_t i = 0; i < numPages; i++)
+            {
+              String pageName = String(pageHandlers[i].page);
+              String CheckLine = (pageHandlers[i].mode == HTTP_UI_MODE_GET ? String("GET /") : String("POST /")) + pageName;
+
+              if (currentLine.startsWith(CheckLine.c_str()))
+              {
+                page = (pageHandlers[i].mode == HTTP_UI_MODE_GET ? CheckLine.substring(5) : CheckLine.substring(6));
+                M5_LOGI("currentLine = [%s] : CheckLine = [%s]: page = [%s]", currentLine.c_str(), CheckLine.c_str(), page.c_str());
+                getRequest = true;
+                break;
+              }
+            }
+          }
         }
 
-        if (currentLine.endsWith("GET /sensorValueNow.json"))
+        if (millis0 - millis1 >= 500)
         {
-          getRequest = true;
-          page = "sensorValueNow.json";
+          M5_LOGE("%s : %u", currentLine.c_str(), millis0 - millis1);
         }
-        else if (currentLine.endsWith("GET /unitTimeNow.json"))
-        {
-          getRequest = true;
-          page = "unitTimeNow.json";
-        }
-        else if (currentLine.endsWith("GET /chart.js"))
-        {
-          getRequest = true;
-          page = "chart.js";
-        }
-        else if (currentLine.endsWith("GET /view.html"))
-        {
-          getRequest = true;
-          page = "view.html";
-        }
-        else if (currentLine.endsWith("GET /chart.html"))
-        {
-          getRequest = true;
-          page = "chart.html";
-        }
-        else if (currentLine.endsWith("GET /configParam.html"))
-        {
-          getRequest = true;
-          page = "configParam.html";
-        }
-        else if (currentLine.endsWith("GET /configTime.html"))
-        {
-          getRequest = true;
-          page = "configTime.html";
-        }
-        else if (currentLine.endsWith("GET /unitTime.html"))
-        {
-          getRequest = true;
-          page = "unitTime.html";
-        }
-        else if (currentLine.endsWith("GET /top.html") || currentLine.endsWith("GET /"))
-        {
-          getRequest = true;
-          page = "top.html";
-        }
-        else if (currentLine.startsWith("POST /configParamSuccess.html"))
-        {
-          getRequest = true;
-          page = "configParamSuccess.html";
-        }
-        else if (currentLine.startsWith("POST /configTimeSuccess.html"))
-        {
-          getRequest = true;
-          page = "configTimeSuccess.html";
-        }
+        millis1 = millis0;
+        delay(1);
       }
+
+      httpClient.setTimeout(saveTimeout);
+      httpClient.stop();
+
+      M5_LOGI("httpClient disconnected : httpClient alived time =  %u ms", millis() - clientStart);
+      M5_LOGI("loopCount =  %u ,charCount = %u", loopCount, charCount);
+
+      xSemaphoreGive(mutex_Ethernet);
+      M5_LOGI("mutex give");
     }
-    delay(1);
-    client.stop();
-    M5_LOGV("client disconnected");
+    else
+    {
+      M5_LOGW("mutex can not take");
+    }
   }
 }

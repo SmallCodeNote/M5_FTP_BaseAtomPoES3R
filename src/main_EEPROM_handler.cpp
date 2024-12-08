@@ -22,7 +22,7 @@ String ntpSrvIP_String = "";
 void InitEEPROM()
 {
     deviceName = "AtomPoE-S3R";
-    deviceIP_String = "192.168.25.177";
+    deviceIP_String = "192.168.25.178";
     ftpSrvIP_String = "192.168.25.74";
     ntpSrvIP_String = "192.168.25.74";
     ftp_user = "ftpusr";

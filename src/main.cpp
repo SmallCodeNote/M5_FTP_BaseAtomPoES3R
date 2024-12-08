@@ -22,6 +22,8 @@
 #define MOSI 8
 #define CS 6
 
+SemaphoreHandle_t mutex_Ethernet;
+
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 
 EthernetClient FtpClient(21);
@@ -77,8 +79,13 @@ bool TofDeviceBegin()
     while (1)
       ;
   }
-  tofDevice.setDistanceMode(VL53L1X::Long);
+
+  // tofDevice.setDistanceMode(VL53L1X::Long);
+  tofDevice.setDistanceMode(VL53L1X::Short);
+  tofDevice.setROISize(8, 8);
+
   tofDevice.setMeasurementTimingBudget(50000);
+
   tofDevice.startContinuous(50);
   M5_LOGI("TofDeveceStart");
   return UnitEnable;
@@ -103,6 +110,12 @@ void updateFTP_ParameterFromGrobalStrings()
 
 void setup()
 {
+
+  if (mutex_Ethernet == NULL)
+  {
+    mutex_Ethernet = xSemaphoreCreateMutex();
+  }
+
   auto cfg = M5.config();
   M5.begin(cfg);
   M5.Log.setLogLevel(m5::log_target_serial, ESP_LOG_VERBOSE);
